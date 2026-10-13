@@ -1,0 +1,50 @@
+[project]
+name = "tokcast"
+version = "0.1.0"
+description = "Forecast Claude Code token usage before you send a prompt. Local-only, no telemetry."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Arslan", email = "arslanmeyrambek@gmail.com" }
+]
+requires-python = ">=3.12"
+keywords = ["claude", "claude-code", "tokens", "llm", "duckdb", "cli", "forecast"]
+classifiers = [
+    "Environment :: Console",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+]
+dependencies = [
+    "duckdb>=1.5.6",
+    "rich>=15.0.0",
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+tokcast = "tokcast.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes basics, I: import sorting, B: bugbear (likely bugs),
+# UP: modern syntax, SIM: simplifications, RUF: ruff-specific checks.
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+# Typer reads defaults like `typer.Option(...)` at call time; that's its intended API.
+extend-ignore = ["B008"]

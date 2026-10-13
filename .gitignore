@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv
+
+# tokcast data: never commit databases or real session logs (privacy).
+# Test fixtures live in tests/fixtures/ and are handwritten or synthetic.
+*.duckdb
+*.duckdb.wal
+*.jsonl
+!tests/fixtures/**/*.jsonl
+
+# Local editor / agent settings
+.claude/settings.local.json
+.DS_Store
