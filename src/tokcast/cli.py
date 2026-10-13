@@ -66,6 +66,8 @@ def ingest(
         report = pipeline.ingest(con, ClaudeCodeSource(), root, store_text=not no_text, full=full)
 
     table = Table(title="Ingest summary", show_header=False, box=None)
+    table.add_column(no_wrap=True)  # labels stay on one line in narrow terminals
+    table.add_column(no_wrap=True)
     table.add_row("Log files found", str(report.files_seen))
     table.add_row("  read (new or changed)", str(report.files_parsed))
     table.add_row("  skipped (unchanged)", str(report.files_skipped))
@@ -74,4 +76,5 @@ def ingest(
     if report.errors:
         table.add_row("Malformed lines", f"[yellow]{report.errors}[/] (skipped, see ingest_errors)")
     console.print(table)
-    console.print(f"[dim]Database: {config.db_path()}[/]")
+    # soft_wrap: let the terminal wrap long paths itself instead of Rich splitting them.
+    console.print(f"[dim]Database: {config.db_path()}[/]", soft_wrap=True)
