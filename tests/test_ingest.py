@@ -149,3 +149,15 @@ def test_failed_load_leaves_no_partial_rows(con, logs_dir, monkeypatch):
         pipeline.ingest(con, SOURCE, logs_dir)
     assert count(con, "prompts") == 0  # the transaction was rolled back
     assert count(con, "ingested_files") == 0
+
+
+def test_turn_totals_are_plain_64bit_integers(con, logs_dir):
+    pipeline.ingest(con, SOURCE, logs_dir)
+    types = dict(
+        con.execute(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_name = 'turns'"
+        ).fetchall()
+    )
+    for col in ("n_tool_calls", "output_tokens", "input_processed_tokens", "total_tokens"):
+        assert types[col] == "BIGINT", col
