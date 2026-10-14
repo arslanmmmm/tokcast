@@ -1,8 +1,8 @@
 -- tokcast storage schema.
--- Each data table has a `source_file` column. Re-ingesting a changed file deletes that
--- file's rows and inserts them again in one transaction ("delete + insert by
--- partition"), which makes every ingest idempotent: running it twice gives the same
--- result as running it once.
+-- Data tables are append-only: rows are upserted by id and never deleted when they
+-- vanish from a log file (Claude Code rewrites and expires its logs). `source_file`
+-- records where a row was first seen. Every ingest is idempotent: running it twice
+-- gives the same result as running it once.
 
 -- Bookkeeping: which files have been loaded, and in what state (size + mtime).
 -- A file whose size and mtime are unchanged is skipped on the next run.

@@ -161,3 +161,46 @@ def test_turn_totals_are_plain_64bit_integers(con, logs_dir):
     )
     for col in ("n_tool_calls", "output_tokens", "input_processed_tokens", "total_tokens"):
         assert types[col] == "BIGINT", col
+
+
+def test_rewritten_file_keeps_history(con, logs_dir):
+    # Claude Code rewrites session files on resume/compact and can drop old lines.
+    s1 = logs_dir / "-Users-dev-myapp" / "s1.jsonl"
+    pipeline.ingest(con, SOURCE, logs_dir)
+    before = con.execute("SELECT * FROM turns ORDER BY turn_id").fetchall()
+
+    lines = s1.read_text().splitlines(keepends=True)
+    s1.write_text("".join(lines[9:]))  # keep only from the second prompt onward
+    report = pipeline.ingest(con, SOURCE, logs_dir)
+
+    assert report.files_parsed == 1
+    assert (count(con, "prompts"), count(con, "requests")) == (3, 6)
+    assert con.execute("SELECT * FROM turns ORDER BY turn_id").fetchall() == before
+
+
+def test_deleted_file_keeps_history(con, logs_dir):
+    # Claude Code deletes session logs after 30 days by default.
+    pipeline.ingest(con, SOURCE, logs_dir)
+    (logs_dir / "-Users-dev-legacy" / "old.jsonl").unlink()
+    pipeline.ingest(con, SOURCE, logs_dir)
+    assert (count(con, "prompts"), count(con, "requests")) == (3, 6)
+
+
+def test_request_counts_only_grow(con, logs_dir):
+    s1 = logs_dir / "-Users-dev-myapp" / "s1.jsonl"
+    pipeline.ingest(con, SOURCE, logs_dir)
+    append(s1, assistant("x7", "x6", "r7", output_tokens=10))  # first, partial line
+    pipeline.ingest(con, SOURCE, logs_dir)
+    append(s1, assistant("x8", "x7", "r7", output_tokens=400))  # final line of r7
+    pipeline.ingest(con, SOURCE, logs_dir)
+    assert con.execute("SELECT output_tokens FROM requests WHERE request_id = 'r7'").fetchone() == (
+        400,
+    )
+
+    # The file is rewritten and only the partial line survives: the count must not shrink.
+    lines = s1.read_text().splitlines(keepends=True)
+    s1.write_text("".join(lines[:-1]))
+    pipeline.ingest(con, SOURCE, logs_dir)
+    assert con.execute("SELECT output_tokens FROM requests WHERE request_id = 'r7'").fetchone() == (
+        400,
+    )
