@@ -30,3 +30,13 @@ uv run tokcast --help
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
+
+### Try it without your own logs
+
+`tokcast synth` writes realistic **synthetic** Claude Code logs (clearly marked, never
+mixed into your real database), so you can try every command right away:
+
+```bash
+uv run tokcast synth --out tokcast-demo
+TOKCAST_HOME=tokcast-demo/db uv run tokcast ingest --path tokcast-demo/logs
+```

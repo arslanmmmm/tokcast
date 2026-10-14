@@ -21,6 +21,11 @@ def data_dir() -> Path:
     return Path(xdg).expanduser() / "tokcast"
 
 
+def uses_default_data_dir() -> bool:
+    """True when tokcast writes to the user's real database (no TOKCAST_HOME override)."""
+    return not os.environ.get("TOKCAST_HOME")
+
+
 def db_path() -> Path:
     return data_dir() / DB_FILENAME
 

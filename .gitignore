@@ -21,3 +21,6 @@ wheels/
 # Local editor / agent settings
 .claude/settings.local.json
 .DS_Store
+
+# Output of `tokcast synth` (synthetic demo logs + their database)
+tokcast-demo/
