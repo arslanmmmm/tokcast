@@ -7,20 +7,25 @@ the CLI makes it testable without a terminal and reusable from other front ends
 """
 
 import json
+import re
 import shlex
 import shutil
+import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import pandas as pd
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from tokcast import __version__, config, render
+from tokcast.features.build import current_conversation, load_turns, new_chat_context
 from tokcast.ingest import pipeline
 from tokcast.ingest.sources import ClaudeCodeSource
+from tokcast.predict import forecast, priors
 from tokcast.stats import build_report
 from tokcast.storage import db
 from tokcast.synth import generator as synth_gen
@@ -131,6 +136,97 @@ def stats(
         console.print("No turns in this period. Try without --days, or run tokcast ingest.")
     else:
         render.render_stats(report, console)
+
+
+@app.command()
+def predict(
+    prompt: str = typer.Argument(..., help='The prompt you are about to send. Use "-" for stdin.'),
+    model: str | None = typer.Option(
+        None, "--model", "-m", help="opus, sonnet, haiku or fable. Default: your latest model."
+    ),
+    effort: str | None = typer.Option(
+        None, "--effort", "-e", help="low, medium, high, xhigh or max. Default: your latest."
+    ),
+    context: str | None = typer.Option(
+        None, "--context", help="Current conversation size, e.g. 120k. Default: a new chat."
+    ),
+    continue_: bool = typer.Option(
+        False, "--continue", "-c", help="Continue your most recent conversation (as of ingest)."
+    ),
+    compare: bool = typer.Option(True, "--compare/--no-compare", help="Show alternatives."),
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    """Estimate how many tokens a prompt will use, before you send it."""
+    if prompt == "-":
+        prompt = sys.stdin.read()
+    if context and continue_:
+        console.print("[red]Use either --context or --continue, not both.[/]")
+        raise typer.Exit(1)
+
+    turns, conversation, fresh, fresh_n = None, None, None, 0
+    if config.db_path().exists():
+        with db.connect(config.db_path()) as con:
+            turns = load_turns(con)
+            conversation = current_conversation(con)
+            fresh, fresh_n = new_chat_context(con)
+    if turns is None:
+        turns = pd.DataFrame()  # no history: predictions fall back to assumptions
+
+    model = _model_family(model or (conversation.model if conversation else "opus"))
+    effort = (effort or (conversation.effort if conversation else None) or "medium").lower()
+    if effort not in priors.EFFORTS:
+        console.print(f"[red]Unknown effort:[/] {effort} (use {', '.join(priors.EFFORTS)})")
+        raise typer.Exit(1)
+
+    if continue_:
+        if conversation is None:
+            console.print("[red]No conversation found.[/] Run tokcast ingest first.")
+            raise typer.Exit(1)
+        mode, tokens, note = (
+            "continue",
+            None,
+            f"last conversation, {conversation.ts:%b %d %H:%M} UTC",
+        )
+    elif context:
+        mode, tokens, note = "given", _parse_tokens(context), "from --context"
+    else:
+        mode, tokens = "new chat", None
+        note = f"median of your {fresh_n} first turns" if fresh_n else "built-in assumption"
+
+    result = forecast(
+        turns,
+        prompt,
+        model=model,
+        effort=effort,
+        context_mode=mode,
+        context_tokens=tokens,
+        context_note=note,
+        conversation=conversation,
+        new_chat_tokens=fresh or None,
+        compare=compare,
+    )
+    if as_json:
+        print(json.dumps(asdict(result), default=str, indent=2))
+    else:
+        render.render_forecast(result, console)
+
+
+def _model_family(name: str) -> str:
+    """'opus', 'Opus' or 'claude-opus-5-5' -> 'opus'."""
+    match = re.search(r"opus|sonnet|haiku|fable", name.lower())
+    if not match:
+        console.print(f"[red]Unknown model:[/] {name} (use {', '.join(priors.MODELS)})")
+        raise typer.Exit(1)
+    return match.group(0)
+
+
+def _parse_tokens(text: str) -> float:
+    """'120k' -> 120000, '1.5M' -> 1500000, '50000' -> 50000."""
+    match = re.fullmatch(r"\s*([\d.]+)\s*([km]?)\s*", text.lower())
+    if not match:
+        console.print(f"[red]Can't read token count:[/] {text} (try 120k or 1.5M)")
+        raise typer.Exit(1)
+    return float(match.group(1)) * {"": 1, "k": 1e3, "m": 1e6}[match.group(2)]
 
 
 @app.command()

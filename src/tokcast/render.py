@@ -5,6 +5,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from tokcast.predict import Estimate, Forecast, Range
 from tokcast.stats import StatsReport
 
 
@@ -216,3 +217,80 @@ def _quality_note(report: StatsReport) -> Group | Text:
             str(r["zero_input"]),
         )
     return Group(t)
+
+
+def _range(r: Range) -> str:
+    return f"{fmt_tokens(r.low)} – {fmt_tokens(r.high)}"  # noqa: RUF001 (a range dash, on purpose)
+
+
+def _basis(e: Estimate) -> str:
+    if e.level == "prior":
+        return "built-in assumption"
+    assumed = [a.split(" x")[0] for a in e.adjustments if a.endswith("(assumed)")]
+    basis = f"{e.group}, n={e.n}"
+    return basis + (f"; assumed: {', '.join(assumed)}" if assumed else "")
+
+
+def render_forecast(f: Forecast, console: Console) -> None:
+    c = f.classification
+    matched = ", ".join(f'"{w}"' for w in c.matched) if c.matched else "no keywords"
+    context = (
+        f"{f.context.mode} ≈ {fmt_tokens(f.context.tokens)} tokens"
+        + (f" ({f.context.note})" if f.context.note else "")
+        + f" + prompt ≈ {fmt_tokens(f.context.prompt_tokens)}"
+    )
+    header = Text.assemble(
+        ("Task: ", "dim"),
+        (c.task_type, "bold"),
+        f"  (matched {matched})\n",
+        ("Context: ", "dim"),
+        context,
+    )
+    console.print(Panel(header, title="tokcast predict", title_align="left", expand=False))
+
+    t = _table(
+        "Estimated tokens for this turn (80% range, median)",
+        *("", "model", "effort", "processed", "median", "written by model", "basis"),
+        right=("processed", "median", "written by model"),
+    )
+    t.columns[-1].no_wrap = False
+    for i, e in enumerate(f.estimates):
+        t.add_row(
+            "▶" if i == 0 else "",
+            e.model,
+            e.effort,
+            _range(e.total),
+            Text(fmt_tokens(e.total.median), style="bold" if i == 0 else ""),
+            _range(e.output),
+            Text(_basis(e), style="dim"),
+        )
+    console.print(t)
+    if f.estimates[0].adjustments:
+        console.print(Text("Adjustments: " + "; ".join(f.estimates[0].adjustments), style="dim"))
+
+    if f.similar:
+        console.print("\n[bold]Similar past prompts[/]")
+        for s in f.similar:
+            console.print(
+                f'  "{s["text"][:50]}" → [bold]{fmt_tokens(s["total_tokens"])}[/]'
+                f" [dim]({s['model']}·{s['effort']}, {s['ts']:%b %d})[/]",
+                soft_wrap=True,
+            )
+    if f.new_chat:
+        console.print(
+            f"\n[yellow]Tip:[/] in a new chat this would be ≈ "
+            f"{fmt_tokens(f.new_chat.total.median)} instead of "
+            f"{fmt_tokens(f.estimates[0].total.median)} (median)."
+        )
+    if f.history_turns == 0:
+        console.print(
+            "\n[yellow]No history yet[/]: these are built-in assumptions. "
+            "Run [bold]tokcast ingest[/] to learn from your own usage."
+        )
+    console.print(
+        Text(
+            "\nEstimates, not guarantees: about 8 in 10 similar turns should fall inside the "
+            "range. How much the model writes is inherently uncertain.",
+            style="dim",
+        )
+    )
