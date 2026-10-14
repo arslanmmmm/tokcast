@@ -1,22 +1,31 @@
 -- Derived views. Recomputed on every query, so they are always consistent with the
 -- base tables and need no refresh step.
 
--- Token totals per API call. "Tokens processed" counts everything the model read or
--- wrote; this is the definition tokcast predicts and reports everywhere.
+-- Token totals per API call, plus the turn each call belongs to.
+-- "Tokens processed" counts everything the model read or wrote; this is the
+-- definition tokcast predicts and reports everywhere.
+--
+-- Most calls were linked to their turn by the parser. Subagent calls live in a separate
+-- file, so they are linked here instead: an ASOF JOIN picks the latest prompt in the
+-- same session at or before the call's timestamp.
 CREATE OR REPLACE VIEW v_requests AS
 SELECT
-    *,
-    input_tokens + cache_read_tokens + cache_creation_tokens AS context_tokens,
-    input_tokens + cache_read_tokens + cache_creation_tokens + output_tokens AS total_tokens,
-    regexp_extract(model, '(opus|sonnet|haiku|fable)', 1) AS model_family
-FROM requests;
+    r.*,
+    coalesce(r.prompt_id, p.prompt_id) AS turn_id,
+    r.input_tokens + r.cache_read_tokens + r.cache_creation_tokens AS context_tokens,
+    r.input_tokens + r.cache_read_tokens + r.cache_creation_tokens + r.output_tokens
+        AS total_tokens,
+    regexp_extract(r.model, '(opus|sonnet|haiku|fable)', 1) AS model_family
+FROM requests r
+ASOF LEFT JOIN prompts p
+    ON r.session_id = p.session_id AND r.ts >= p.ts;
 
--- One row per turn: a human prompt plus every API call it triggered (the tool loop).
--- This is the unit tokcast predicts.
+-- One row per turn: a human prompt plus every API call it triggered (the tool loop),
+-- including calls made by subagents. This is the unit tokcast predicts.
 CREATE OR REPLACE VIEW turns AS
 WITH per_turn AS (
     SELECT
-        prompt_id,
+        turn_id,
         count(*)                         AS n_requests,
         -- SUM over BIGINT returns HUGEINT (int128) in DuckDB; cast back so pandas gets int64.
         sum(n_tool_calls)::BIGINT        AS n_tool_calls,
@@ -24,14 +33,19 @@ WITH per_turn AS (
         sum(thinking_tokens)::BIGINT     AS thinking_tokens,
         sum(context_tokens)::BIGINT      AS input_processed_tokens,
         sum(total_tokens)::BIGINT        AS total_tokens,
-        -- The first call of a turn shows how big the conversation already was.
-        arg_min(context_tokens, line_no) AS context_tokens_before,
-        arg_min(model, line_no)          AS model,
-        arg_min(model_family, line_no)   AS model_family,
-        arg_min(effort, line_no)         AS effort
+        count(*) FILTER (WHERE agent_id IS NOT NULL)                        AS n_subagent_requests,
+        coalesce(sum(total_tokens) FILTER (WHERE agent_id IS NOT NULL), 0)::BIGINT
+                                         AS subagent_tokens,
+        -- The main agent's first call shows how big the conversation already was, and
+        -- which model and effort the user picked. (Subagent line numbers come from
+        -- another file, so they are left out of these.)
+        arg_min(context_tokens, line_no) FILTER (WHERE agent_id IS NULL) AS context_tokens_before,
+        arg_min(model, line_no)          FILTER (WHERE agent_id IS NULL) AS model,
+        arg_min(model_family, line_no)   FILTER (WHERE agent_id IS NULL) AS model_family,
+        arg_min(effort, line_no)         FILTER (WHERE agent_id IS NULL) AS effort
     FROM v_requests
-    WHERE prompt_id IS NOT NULL
-    GROUP BY prompt_id
+    WHERE turn_id IS NOT NULL
+    GROUP BY turn_id
 )
 SELECT
     p.prompt_id                      AS turn_id,
@@ -48,11 +62,13 @@ SELECT
     t.effort,
     coalesce(t.n_requests, 0)              AS n_requests,
     coalesce(t.n_tool_calls, 0)            AS n_tool_calls,
+    coalesce(t.n_subagent_requests, 0)     AS n_subagent_requests,
     t.context_tokens_before,
     coalesce(t.output_tokens, 0)           AS output_tokens,
     coalesce(t.thinking_tokens, 0)         AS thinking_tokens,
     coalesce(t.input_processed_tokens, 0)  AS input_processed_tokens,
+    coalesce(t.subagent_tokens, 0)         AS subagent_tokens,
     coalesce(t.total_tokens, 0)            AS total_tokens
 FROM prompts p
-LEFT JOIN per_turn t USING (prompt_id)
+LEFT JOIN per_turn t ON t.turn_id = p.prompt_id
 LEFT JOIN sessions s USING (session_id);

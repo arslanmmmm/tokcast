@@ -9,6 +9,7 @@ from .conftest import FIXTURES
 SOURCE = ClaudeCodeSource()
 S1 = FIXTURES / "-Users-dev-myapp" / "s1.jsonl"
 LEGACY = FIXTURES / "-Users-dev-legacy" / "old.jsonl"
+SUBAGENT = FIXTURES / "-Users-dev-myapp" / "s1" / "subagents" / "agent-a1.jsonl"
 
 
 @pytest.fixture(scope="module")
@@ -21,7 +22,7 @@ def by_id(parsed):
 
 
 def test_discover_finds_jsonl_files_in_project_folders():
-    assert set(SOURCE.discover(FIXTURES)) == {S1, LEGACY}
+    assert set(SOURCE.discover(FIXTURES)) == {S1, LEGACY, SUBAGENT}
 
 
 def test_split_lines_are_merged_into_one_request(s1):
@@ -117,3 +118,25 @@ def test_empty_and_missing_files(tmp_path):
     assert SOURCE.parse_file(empty).errors == []
     missing = SOURCE.parse_file(tmp_path / "nope.jsonl")
     assert "cannot read file" in missing.errors[0].error
+
+
+def test_subagent_file_has_no_prompts_and_tags_its_requests():
+    parsed = SOURCE.parse_file(SUBAGENT)
+    # The task handed to the subagent looks like a plain user message, but isn't human.
+    assert parsed.prompts == []
+    assert sorted(by_id(parsed)) == ["ra1", "ra2"]
+    assert all(r.agent_id == "a1" and r.is_sidechain for r in parsed.requests)
+    # Its parent links point into the main file, so the parser can't link the turn.
+    assert all(r.prompt_id is None for r in parsed.requests)
+
+
+def test_agent_id_falls_back_to_the_file_name(tmp_path):
+    path = tmp_path / "s9" / "subagents" / "agent-zz.jsonl"
+    path.parent.mkdir(parents=True)
+    line = SUBAGENT.read_text().splitlines()[1].replace('"agentId":"a1",', "")
+    path.write_text(line + "\n")
+    assert SOURCE.parse_file(path).requests[0].agent_id == "zz"
+
+
+def test_main_agent_requests_have_no_agent_id(s1):
+    assert all(r.agent_id is None for r in s1.requests)

@@ -47,6 +47,7 @@ class Request:
     web_fetch_requests: int = 0
     tool_names: list[str] = field(default_factory=list)
     is_sidechain: bool = False
+    agent_id: str | None = None  # set for calls made by a subagent (Task tool)
 
 
 @dataclass

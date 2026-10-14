@@ -16,6 +16,11 @@ Facts about the format this parser relies on (verified on real logs, v2.1.x):
    recent prompt in file order is used instead.
 4. Timestamps can go backwards between neighbouring lines, so ordering uses line
    numbers, not time.
+5. Subagents (the Task tool) write their own file, ``<session>/subagents/agent-<id>.jsonl``,
+   with an ``agentId`` on each line. Their first user line is the task handed over by
+   the main agent, not a human prompt. Their parent links point into the main file, so
+   they are linked to a turn later, in SQL (see ``views.sql``).
+   This layout comes from community reports; it isn't verified on real logs yet.
 """
 
 import hashlib
@@ -48,7 +53,7 @@ class ClaudeCodeSource:
     def parse_file(self, path: Path, *, store_text: bool = True) -> ParsedFile:
         out = ParsedFile(path=str(path), source=self.name)
         records = _read_records(path, out)
-        _FileParser(records, out, store_text).run()
+        _FileParser(records, out, store_text, agent_id=_agent_id_from_path(path)).run()
         return out
 
 
@@ -81,9 +86,14 @@ class _FileParser:
     """Turns the records of one file into prompts, requests and sessions."""
 
     def __init__(
-        self, records: list[tuple[int, dict[str, Any]]], out: ParsedFile, store_text: bool
+        self,
+        records: list[tuple[int, dict[str, Any]]],
+        out: ParsedFile,
+        store_text: bool,
+        agent_id: str | None = None,
     ):
         self.records = records
+        self.file_agent_id = agent_id
         self.out = out
         self.store_text = store_text
         self.by_uuid = {rec["uuid"]: rec for _, rec in records if isinstance(rec.get("uuid"), str)}
@@ -187,6 +197,7 @@ class _FileParser:
                 effort=rec.get("effort"),
                 stop_reason=None,
                 is_sidechain=bool(rec.get("isSidechain")),
+                agent_id=rec.get("agentId") or self.file_agent_id,
             )
             self.requests[key] = req
             self.tool_ids[key] = set()
@@ -231,6 +242,8 @@ class _FileParser:
 def _is_human_prompt(rec: dict[str, Any]) -> bool:
     if rec.get("type") != "user" or rec.get("isMeta") or rec.get("isCompactSummary"):
         return False
+    if rec.get("agentId") or rec.get("isSidechain"):  # a task handed to a subagent
+        return False
     if "turnOrigin" in rec:  # newer versions say it explicitly
         return rec["turnOrigin"] == "human"
     # Older versions: a user line is human input unless it only carries tool results.
@@ -241,6 +254,13 @@ def _is_human_prompt(rec: dict[str, Any]) -> bool:
         types = {b.get("type") for b in content if isinstance(b, dict)}
         return bool(types & {"text", "image"}) and "tool_result" not in types
     return False
+
+
+def _agent_id_from_path(path: Path) -> str | None:
+    """``.../<session>/subagents/agent-<id>.jsonl`` -> ``<id>``."""
+    if path.parent.name == "subagents" and path.stem.startswith("agent-"):
+        return path.stem.removeprefix("agent-")
+    return None
 
 
 def _prompt_key(rec: dict[str, Any]) -> str | None:

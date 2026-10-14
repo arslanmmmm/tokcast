@@ -44,9 +44,9 @@ def assistant(uuid, parent, request_id, output_tokens, cache_read=5000):
 
 def test_first_ingest_loads_all_tables(con, logs_dir):
     report = pipeline.ingest(con, SOURCE, logs_dir)
-    assert (report.files_seen, report.files_parsed, report.files_skipped) == (2, 2, 0)
-    assert count(con, "prompts") == 3  # p1, p2 in s1 + L1 in legacy
-    assert count(con, "requests") == 6  # r1, r2, r4 + lr1, lr2, lr3
+    assert (report.files_seen, report.files_parsed, report.files_skipped) == (3, 3, 0)
+    assert count(con, "prompts") == 3  # p1, p2 in s1 + L1 in legacy (none in the subagent)
+    assert count(con, "requests") == 8  # r1, r2, r4 + subagent ra1, ra2 + lr1, lr2, lr3
     assert count(con, "sessions") == 2
     assert count(con, "ingest_errors") == 2
     assert report.errors == 2
@@ -55,15 +55,15 @@ def test_first_ingest_loads_all_tables(con, logs_dir):
 def test_second_run_skips_unchanged_files(con, logs_dir):
     pipeline.ingest(con, SOURCE, logs_dir)
     report = pipeline.ingest(con, SOURCE, logs_dir)
-    assert (report.files_parsed, report.files_skipped) == (0, 2)
+    assert (report.files_parsed, report.files_skipped) == (0, 3)
     assert (report.new_prompts, report.new_requests) == (0, 0)
 
 
 def test_full_rerun_does_not_duplicate_rows(con, logs_dir):
     pipeline.ingest(con, SOURCE, logs_dir)
     report = pipeline.ingest(con, SOURCE, logs_dir, full=True)
-    assert report.files_parsed == 2
-    assert (count(con, "prompts"), count(con, "requests"), count(con, "ingest_errors")) == (3, 6, 2)
+    assert report.files_parsed == 3
+    assert (count(con, "prompts"), count(con, "requests"), count(con, "ingest_errors")) == (3, 8, 2)
 
 
 def test_appended_lines_are_picked_up(con, logs_dir):
@@ -87,7 +87,7 @@ def test_appended_lines_are_picked_up(con, logs_dir):
         assistant("x8", "u5", "r6", output_tokens=500),
     )
     report = pipeline.ingest(con, SOURCE, logs_dir)
-    assert (report.files_parsed, report.files_skipped) == (1, 1)
+    assert (report.files_parsed, report.files_skipped) == (1, 2)
     assert (report.new_prompts, report.new_requests) == (1, 2)
     n_requests = con.execute("SELECT n_requests FROM turns WHERE turn_id = 'p2'").fetchone()[0]
     assert n_requests == 2  # the old turn grew
@@ -113,11 +113,14 @@ def test_turns_view_aggregates_each_turn(con, logs_dir):
     pipeline.ingest(con, SOURCE, logs_dir)
     row = con.execute(
         """SELECT turn_index, project, model_family, effort, n_requests, n_tool_calls,
-                  context_tokens_before, output_tokens, total_tokens
+                  n_subagent_requests, context_tokens_before, output_tokens,
+                  subagent_tokens, total_tokens
            FROM turns WHERE turn_id = 'p1'"""
     ).fetchone()
-    # r1: 3 + 1000 + 500 in, 120 out.  r2: 1 + 1500 + 50 in, 60 out.
-    assert row == (1, "myapp", "sonnet", "high", 2, 1, 1503, 180, 1623 + 1611)
+    # Main agent  r1: 3 + 1000 + 500 in, 120 out = 1623.  r2: 1 + 1500 + 50 in, 60 out = 1611.
+    # Subagent   ra1: 5 + 800 in, 30 out = 835.          ra2: 2 + 800 + 100 in, 20 out = 922.
+    # Context, model and effort come from the main agent's first call only (not haiku).
+    assert row == (1, "myapp", "sonnet", "high", 4, 2, 2, 1503, 230, 835 + 922, 3234 + 1757)
     index = con.execute("SELECT turn_index FROM turns WHERE turn_id = 'p2'").fetchone()[0]
     assert index == 2
 
@@ -174,7 +177,7 @@ def test_rewritten_file_keeps_history(con, logs_dir):
     report = pipeline.ingest(con, SOURCE, logs_dir)
 
     assert report.files_parsed == 1
-    assert (count(con, "prompts"), count(con, "requests")) == (3, 6)
+    assert (count(con, "prompts"), count(con, "requests")) == (3, 8)
     assert con.execute("SELECT * FROM turns ORDER BY turn_id").fetchall() == before
 
 
@@ -183,7 +186,7 @@ def test_deleted_file_keeps_history(con, logs_dir):
     pipeline.ingest(con, SOURCE, logs_dir)
     (logs_dir / "-Users-dev-legacy" / "old.jsonl").unlink()
     pipeline.ingest(con, SOURCE, logs_dir)
-    assert (count(con, "prompts"), count(con, "requests")) == (3, 6)
+    assert (count(con, "prompts"), count(con, "requests")) == (3, 8)
 
 
 def test_request_counts_only_grow(con, logs_dir):
@@ -204,3 +207,25 @@ def test_request_counts_only_grow(con, logs_dir):
     assert con.execute("SELECT output_tokens FROM requests WHERE request_id = 'r7'").fetchone() == (
         400,
     )
+
+
+def test_old_database_gets_the_agent_id_column(tmp_path, logs_dir):
+    # A database created before subagent support has no agent_id column.
+    import duckdb
+
+    from tokcast.storage import db
+
+    path = tmp_path / "old.duckdb"
+    old = duckdb.connect(str(path))
+    schema = db.load_sql("schema.sql").split("-- Migrations")[0]
+    old.execute(
+        schema.replace(
+            ",\n    agent_id                  VARCHAR      -- set for calls made by a subagent", ""
+        )
+    )
+    assert "agent_id" not in [c[0] for c in old.execute("DESCRIBE requests").fetchall()]
+    old.close()
+
+    con = db.connect(path)  # migrations run on connect
+    pipeline.ingest(con, SOURCE, logs_dir)
+    assert con.execute("SELECT count(*) FROM requests WHERE agent_id = 'a1'").fetchone() == (2,)

@@ -69,5 +69,9 @@ CREATE TABLE IF NOT EXISTS requests (
     web_fetch_requests        INTEGER NOT NULL,
     tool_names                VARCHAR[] NOT NULL,
     n_tool_calls              INTEGER NOT NULL,
-    is_sidechain              BOOLEAN NOT NULL
+    is_sidechain              BOOLEAN NOT NULL,
+    agent_id                  VARCHAR      -- set for calls made by a subagent
 );
+
+-- Migrations for databases created by older tokcast versions. Each is idempotent.
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS agent_id VARCHAR;

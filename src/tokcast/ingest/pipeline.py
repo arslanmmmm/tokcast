@@ -148,8 +148,15 @@ def _load_file(
             # Token counts can only grow: a request first seen half-written gets its
             # final numbers later, but a rewritten file can never shrink them.
             con.executemany(
-                """INSERT INTO requests VALUES
-                   (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                # Explicit column names: older databases got agent_id via ALTER TABLE,
+                # so column *positions* can differ between installs.
+                """INSERT INTO requests (
+                       request_id, session_id, prompt_id, source_file, line_no, ts, model,
+                       effort, stop_reason, input_tokens, output_tokens, cache_read_tokens,
+                       cache_creation_tokens, cache_creation_5m_tokens,
+                       cache_creation_1h_tokens, thinking_tokens, web_search_requests,
+                       web_fetch_requests, tool_names, n_tool_calls, is_sidechain, agent_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT (request_id) DO UPDATE SET
                        prompt_id   = coalesce(requests.prompt_id, excluded.prompt_id),
                        stop_reason = coalesce(excluded.stop_reason, requests.stop_reason),
@@ -173,7 +180,8 @@ def _load_file(
                        tool_names = CASE
                            WHEN len(excluded.tool_names) > len(requests.tool_names)
                            THEN excluded.tool_names ELSE requests.tool_names END,
-                       n_tool_calls = greatest(requests.n_tool_calls, excluded.n_tool_calls)""",
+                       n_tool_calls = greatest(requests.n_tool_calls, excluded.n_tool_calls),
+                       agent_id = coalesce(requests.agent_id, excluded.agent_id)""",
                 [
                     (
                         r.request_id,
@@ -197,6 +205,7 @@ def _load_file(
                         r.tool_names,
                         len(r.tool_names),
                         r.is_sidechain,
+                        r.agent_id,
                     )
                     for r in parsed.requests
                 ],
