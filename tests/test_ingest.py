@@ -229,3 +229,19 @@ def test_old_database_gets_the_agent_id_column(tmp_path, logs_dir):
     con = db.connect(path)  # migrations run on connect
     pipeline.ingest(con, SOURCE, logs_dir)
     assert con.execute("SELECT count(*) FROM requests WHERE agent_id = 'a1'").fetchone() == (2,)
+
+
+def test_full_reingest_refreshes_prompt_fields_but_keeps_the_row(con, logs_dir, monkeypatch):
+    pipeline.ingest(con, SOURCE, logs_dir)
+    real_parse = SOURCE.parse_file
+
+    def improved_parser(path, **kwargs):  # simulates a parser fix in a newer tokcast
+        parsed = real_parse(path, **kwargs)
+        for p in parsed.prompts:
+            p.kind = "improved"
+        return parsed
+
+    monkeypatch.setattr(SOURCE, "parse_file", improved_parser)
+    pipeline.ingest(con, SOURCE, logs_dir, full=True)
+    assert con.execute("SELECT DISTINCT kind FROM prompts").fetchall() == [("improved",)]
+    assert count(con, "prompts") == 3

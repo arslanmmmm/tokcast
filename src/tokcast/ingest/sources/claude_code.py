@@ -37,6 +37,10 @@ from tokcast.ingest.records import LineError, ParsedFile, Prompt, Request, Sessi
 # of input (a shell command typed in the app, a slash command, ...). Kept as `kind`.
 _LEADING_TAG = re.compile(r"\s*<([a-zA-Z][\w-]*)>")
 
+# Claude Code (notably the desktop app) can prepend hidden <system-reminder> blocks to the
+# user's message. They are context for the model, not words the user typed.
+_SYSTEM_REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+
 # Claude Code writes placeholder assistant messages (e.g. for API errors) with this
 # model name. They are not real API calls and have no meaningful usage.
 _SYNTHETIC_MODEL = "<synthetic>"
@@ -270,7 +274,7 @@ def _prompt_key(rec: dict[str, Any]) -> str | None:
 
 def _prompt_text(content: Any) -> tuple[str, bool]:
     if isinstance(content, str):
-        return content, False
+        content = [{"type": "text", "text": content}]
     texts: list[str] = []
     has_image = False
     for block in content if isinstance(content, list) else []:
@@ -280,7 +284,7 @@ def _prompt_text(content: Any) -> tuple[str, bool]:
             texts.append(block["text"])
         elif block.get("type") == "image":
             has_image = True
-    return "\n".join(texts), has_image
+    return _SYSTEM_REMINDER.sub("", "\n".join(texts)).strip(), has_image
 
 
 def _parse_ts(value: Any) -> datetime | None:

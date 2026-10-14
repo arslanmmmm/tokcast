@@ -238,11 +238,17 @@ def _load_file(
                    git_branch   = coalesce(sessions.git_branch, excluded.git_branch),
                    tool_version = coalesce(sessions.tool_version, excluded.tool_version)"""
         )
-        # A prompt never changes once written: the first copy wins (this also covers
-        # branched or resumed sessions that copy old prompts into a new file).
+        # A prompt is never deleted. When it is seen again, fields derived from its text
+        # are refreshed, so parser improvements reach old rows via `ingest --full`.
+        # Where and when it was first seen (source_file, line_no, ts) stays.
         con.execute(
             """INSERT INTO prompts BY NAME SELECT * FROM staged_prompts
-               ON CONFLICT (prompt_id) DO NOTHING"""
+               ON CONFLICT (prompt_id) DO UPDATE SET
+                   kind        = excluded.kind,
+                   text        = excluded.text,
+                   text_chars  = excluded.text_chars,
+                   text_sha256 = excluded.text_sha256,
+                   has_image   = excluded.has_image"""
         )
         # Token counts can only grow: a request first seen half-written gets its final
         # numbers later, but a rewritten file can never shrink them.

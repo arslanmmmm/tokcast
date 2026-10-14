@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 import pytest
@@ -140,3 +141,25 @@ def test_agent_id_falls_back_to_the_file_name(tmp_path):
 
 def test_main_agent_requests_have_no_agent_id(s1):
     assert all(r.agent_id is None for r in s1.requests)
+
+
+def test_system_reminders_are_removed_from_prompt_text(tmp_path):
+    path = tmp_path / "s.jsonl"
+    content = (
+        "<system-reminder>\nInjected by the app.\n</system-reminder>\nrefactor the auth module"
+    )
+    path.write_text(
+        json.dumps(
+            {
+                "type": "user",
+                "uuid": "u",
+                "promptId": "p",
+                "turnOrigin": "human",
+                "message": {"content": content},
+            }
+        )
+        + "\n"
+    )
+    prompt = SOURCE.parse_file(path).prompts[0]
+    assert (prompt.text, prompt.kind) == ("refactor the auth module", "text")
+    assert prompt.text_chars == len("refactor the auth module")
