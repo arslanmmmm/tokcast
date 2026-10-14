@@ -231,8 +231,11 @@ class _Session:
 
         for call in range(n_calls):
             final = call == n_calls - 1
-            output = min(
-                int(_lognormal(rng, profile.output * effort.output * model.output, 0.8)), 32_000
+            output = max(
+                1,
+                min(
+                    int(_lognormal(rng, profile.output * effort.output * model.output, 0.8)), 32_000
+                ),
             )
             thinking = int(output * effort.thinking_share * model.thinking_share)
             tools = [] if final else ["Task"] if call == spawn_at else self._tools()

@@ -6,18 +6,22 @@ the CLI makes it testable without a terminal and reusable from other front ends
 (e.g. the planned browser extension).
 """
 
+import json
 import shlex
 import shutil
 import time
+from dataclasses import asdict
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from tokcast import __version__, config
+from tokcast import __version__, config, render
 from tokcast.ingest import pipeline
 from tokcast.ingest.sources import ClaudeCodeSource
+from tokcast.stats import build_report
 from tokcast.storage import db
 from tokcast.synth import generator as synth_gen
 
@@ -96,6 +100,37 @@ def ingest(
     console.print(table)
     # soft_wrap: let the terminal wrap long paths itself instead of Rich splitting them.
     console.print(f"[dim]Database: {config.db_path()}[/]", soft_wrap=True)
+
+
+@app.command()
+def stats(
+    days: int | None = typer.Option(None, "--days", min=1, help="Only the last N days."),
+    top: int = typer.Option(5, "--top", min=1, help="How many expensive sessions to list."),
+    tz: str | None = typer.Option(
+        None, "--tz", help="Time zone for daily totals, e.g. Asia/Almaty. Default: system."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    """Summarize your history: tokens by model, day and project, and what drives cost."""
+    if not config.db_path().exists():
+        console.print("No data yet. Run [bold]tokcast ingest[/] first.")
+        raise typer.Exit(1)
+    with db.connect(config.db_path()) as con:
+        if tz:
+            try:
+                ZoneInfo(tz)  # validate before putting it into SQL
+            except (ZoneInfoNotFoundError, ValueError):
+                console.print(f"[red]Unknown time zone:[/] {tz}")
+                raise typer.Exit(1) from None
+            con.execute(f"SET TimeZone = '{tz}'")
+        report = build_report(con, days=days, top=top)
+
+    if as_json:
+        print(json.dumps(asdict(report), default=str, indent=2))
+    elif report.is_empty:
+        console.print("No turns in this period. Try without --days, or run tokcast ingest.")
+    else:
+        render.render_stats(report, console)
 
 
 @app.command()

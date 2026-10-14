@@ -15,7 +15,14 @@ SELECT
     r.input_tokens + r.cache_read_tokens + r.cache_creation_tokens AS context_tokens,
     r.input_tokens + r.cache_read_tokens + r.cache_creation_tokens + r.output_tokens
         AS total_tokens,
-    regexp_extract(r.model, '(opus|sonnet|haiku|fable)', 1) AS model_family
+    regexp_extract(r.model, '(opus|sonnet|haiku|fable)', 1) AS model_family,
+    -- Usage values that can't be right. Some Claude Code versions logged placeholder
+    -- or incomplete counts; flagged calls are reported by `stats` and kept out of training.
+    CASE
+        WHEN r.thinking_tokens > r.output_tokens THEN 'thinking_exceeds_output'
+        WHEN r.output_tokens = 0 THEN 'zero_output'
+        WHEN r.input_tokens + r.cache_read_tokens + r.cache_creation_tokens = 0 THEN 'zero_input'
+    END AS quality_flag
 FROM requests r
 ASOF LEFT JOIN prompts p
     ON r.session_id = p.session_id AND r.ts >= p.ts;
@@ -34,6 +41,7 @@ WITH per_turn AS (
         sum(context_tokens)::BIGINT      AS input_processed_tokens,
         sum(total_tokens)::BIGINT        AS total_tokens,
         count(*) FILTER (WHERE agent_id IS NOT NULL)                        AS n_subagent_requests,
+        count(quality_flag)              AS n_flagged_requests,
         coalesce(sum(total_tokens) FILTER (WHERE agent_id IS NOT NULL), 0)::BIGINT
                                          AS subagent_tokens,
         -- The main agent's first call shows how big the conversation already was, and
@@ -63,6 +71,7 @@ SELECT
     coalesce(t.n_requests, 0)              AS n_requests,
     coalesce(t.n_tool_calls, 0)            AS n_tool_calls,
     coalesce(t.n_subagent_requests, 0)     AS n_subagent_requests,
+    coalesce(t.n_flagged_requests, 0)      AS n_flagged_requests,
     t.context_tokens_before,
     coalesce(t.output_tokens, 0)           AS output_tokens,
     coalesce(t.thinking_tokens, 0)         AS thinking_tokens,

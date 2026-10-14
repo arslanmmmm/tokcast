@@ -11,8 +11,8 @@ import duckdb
 
 
 def load_sql(name: str) -> str:
-    """Read a .sql file shipped inside the package (tokcast/storage/sql/)."""
-    return files("tokcast.storage").joinpath("sql", name).read_text(encoding="utf-8")
+    """Read a .sql file shipped in the package, e.g. ``"schema.sql"``, ``"stats/by_day.sql"``."""
+    return files("tokcast.storage").joinpath("sql", *name.split("/")).read_text(encoding="utf-8")
 
 
 def connect(path: Path | str) -> duckdb.DuckDBPyConnection:
