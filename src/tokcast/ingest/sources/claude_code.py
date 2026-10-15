@@ -40,6 +40,9 @@ _LEADING_TAG = re.compile(r"\s*<([a-zA-Z][\w-]*)>")
 # Claude Code (notably the desktop app) can prepend hidden <system-reminder> blocks to the
 # user's message. They are context for the model, not words the user typed.
 _SYSTEM_REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+# The desktop app wraps pasted text in <pasted_content id="..."> ... </pasted_content id="...">.
+# The text inside is the user's prompt, so only the wrapper tags are removed.
+_PASTED_TAG = re.compile(r"</?pasted_content\b[^>]*>")
 
 # Claude Code writes placeholder assistant messages (e.g. for API errors) with this
 # model name. They are not real API calls and have no meaningful usage.
@@ -284,7 +287,8 @@ def _prompt_text(content: Any) -> tuple[str, bool]:
             texts.append(block["text"])
         elif block.get("type") == "image":
             has_image = True
-    return _SYSTEM_REMINDER.sub("", "\n".join(texts)).strip(), has_image
+    text = _SYSTEM_REMINDER.sub("", "\n".join(texts))
+    return _PASTED_TAG.sub("", text).strip(), has_image
 
 
 def _parse_ts(value: Any) -> datetime | None:

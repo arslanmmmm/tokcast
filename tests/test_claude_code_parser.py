@@ -163,3 +163,26 @@ def test_system_reminders_are_removed_from_prompt_text(tmp_path):
     prompt = SOURCE.parse_file(path).prompts[0]
     assert (prompt.text, prompt.kind) == ("refactor the auth module", "text")
     assert prompt.text_chars == len("refactor the auth module")
+
+
+def test_pasted_content_wrapper_tags_are_removed_but_the_text_is_kept(tmp_path):
+    # The desktop app wraps pasted text in tags; the closing tag repeats the id.
+    path = tmp_path / "s.jsonl"
+    content = (
+        '<pasted_content id="da23">\nrefactor the auth module\n</pasted_content id="da23">\nplease'
+    )
+    path.write_text(
+        json.dumps(
+            {
+                "type": "user",
+                "uuid": "u",
+                "promptId": "p",
+                "turnOrigin": "human",
+                "message": {"content": content},
+            }
+        )
+        + "\n"
+    )
+    prompt = SOURCE.parse_file(path).prompts[0]
+    assert prompt.text == "refactor the auth module\n\nplease"
+    assert prompt.kind == "text"
