@@ -21,6 +21,12 @@ The status line runs after every reply, so `tokcast statusline`:
 
 `tokcast ingest`, `calibrate` and `predict` load that file into the database.
 
+**With the Claude Code mod.** [tokcast-buddy](../integrations/claude-code/) reads the same
+windows live (`$.session.usage().rateLimits`) and, after every turn, passes them to
+`tokcast statusline` in the status line's JSON shape, then runs `tokcast ingest`. So
+readings collect with no setup, and each one becomes usable as soon as its turn is
+ingested.
+
 **By hand.** Read the percentage on Claude's usage screen and run:
 
 ```bash
@@ -41,14 +47,15 @@ can start a window earlier, so `--resets-in` is safer.
 
    This is an assumption: that limits weigh tokens the way prices do. A turn that re-reads a
    big context 20 times is mostly cheap cache reads.
-2. **Sum the weighted tokens inside the window**, from `resets_at` minus 5 hours up to the
-   moment of the reading.
+2. **Sum the weighted tokens inside the window**, from `resets_at` minus 5 hours (or 7 days
+   for the weekly window) up to the moment of the reading.
 3. **One ratio per reading:** % used ÷ million weighted tokens. The **median** over all
    readings is your calibration; the 10th and 90th percentiles show its spread.
 4. **Predict:** % of limit ≈ ratio × (weighted / total tokens of a typical turn) × predicted
    tokens processed.
 
-Predictions show "% of 5h limit" after **3 usable readings**. A reading is skipped if it is
+Each window is calibrated separately. Predictions show "% of 5h limit" and the weekly
+`weekly_pct` after **3 usable readings** of that window. A reading is skipped if it is
 under 2% (the rounding of the percentage dominates) or was taken after the last ingested
 API call (its tokens aren't in the database yet; run `tokcast ingest`).
 

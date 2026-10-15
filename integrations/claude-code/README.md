@@ -23,6 +23,11 @@ estimates before you send it:
 - The prediction runs only on a click, not on every keystroke: each run starts Python and
   DuckDB (about a second).
 - Sending a prompt clears the bubble, because the estimate was for that draft.
+- **It steps aside when Claude Code needs the space.** When something else holds the band
+  above the prompt (a question box, a survey), Claude Code sets `hasSurvey` and the mod
+  draws nothing, as mods are meant to. Close that box and the character returns. (During
+  development this looked like a bug: the character "vanished" after every turn that
+  ended with a question box.)
 - `hooks/args.ts` passes what the session knows, so follow-ups aren't priced as new chats:
 
   | flag | from | when unknown |
@@ -59,7 +64,7 @@ The mod has two options (`/config`, or `pluginConfigs` in settings):
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 27 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 28 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 

@@ -197,3 +197,21 @@ test("the main loop's effort is remembered for the next estimate", async ($, on)
 
   expect(runs[0]?.argv.slice(-2)).toEqual(['--effort', 'high'])
 })
+
+test('steps aside while Claude Code shows a question box above the prompt', async ($, on) => {
+  engine(on, 'hello', OK)
+  // Stands in for Claude Code's own drawing of the band (here, its question box).
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>question box</Text>
+  })
+  const ui = await $.ui.mount({
+    plugin: 'tokcast-buddy',
+    surface: 'desktop',
+    component: 'AbovePrompt',
+    props: { ...PROPS, hasSurvey: true },
+  })
+
+  expect(await ui.find({ key: 'estimate' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'question box' })).toBeDefined()
+})

@@ -1,8 +1,8 @@
 # Plan, progress and decisions
 
-**Status (2026-10-15): v0.1 complete; milestone 9 (Claude Code mod) in progress.** All
-eight v0.1 milestones are done, plus one fix found while demoing on real data; 134 Python
-tests pass and CI is green. Milestone 9 adds a mod for Claude Code (27 tests of its own).
+**Status (2026-10-15): v0.1 complete; milestone 9 (Claude Code mod) complete.** All
+eight v0.1 milestones are done, plus one fix found while demoing on real data; 135 Python
+tests pass and CI is green. Milestone 9 adds a mod for Claude Code (28 tests of its own).
 This file records what was built, the decisions behind it, and what's next.
 
 ## Milestones
@@ -24,7 +24,8 @@ This file records what was built, the decisions behind it, and what's next.
 | 9a | Claude Code mod: a character above the prompt that predicts the draft on click | ✅ | `2215b65` |
 | 9b | Mod passes the live context size, model and effort | ✅ | after `2215b65` |
 | 9c | 5h and weekly %: live usage, readings collected by the mod, weekly calibration | ✅ | after `74621f1` |
-| 9d | Mod: README section, demo | ⏳ | |
+| 9d | Mod docs: README section, privacy/limitations, calibration doc | ✅ | after `a7c6657` |
+| 10 | Starting guess for % of limit per plan, refined by readings | ⏳ | |
 
 ## Key decisions
 
@@ -166,6 +167,27 @@ medium effort.
 - Real data found three things the synthetic data couldn't: injected `<system-reminder>`
   blocks, `<pasted_content>` wrapper tags, and conversations growing past 400k tokens.
 
+### Milestone 10 plan: a starting guess for "% of limit" (agreed 2026-10-15)
+
+Today a new user sees only "% used now" until 3 readings per window exist (the cold-start
+problem). Token predictions don't have this problem: ingest learns from ~30 days of
+existing logs, and the built-in priors cover users with none. Usage % can't be backfilled,
+because past readings aren't in the logs.
+
+Plan:
+1. A mod/CLI option for the plan: Pro, Max 5x, Max 20x.
+2. A shipped prior for the ratio (% per million weighted tokens) per window and plan,
+   labelled "assumed": fitted on the author's real readings (**Pro plan**), scaled by the
+   published plan multipliers (Max 5x ≈ 5×, Max 20x ≈ 20× Pro usage).
+3. Replace the hard 3-reading switch with shrinkage toward that prior (pseudo-readings,
+   like decision 13), so a percentage shows from the first prompt and becomes the user's
+   own as readings come in.
+
+Wait for a few days of real readings first. Decision rule, written down before looking:
+adopt the blended estimate only if, on held-out later readings, its median absolute error
+in % is lower than the current method's with a paired 95% interval excluding zero.
+Caveat: the prior comes from one user, so it's labelled "assumed" everywhere.
+
 ### First real check of the mod (2026-10-15)
 
 The draft "go for next milestone" was estimated by 9a at ~2.9M tokens (364k–7.4M); the
@@ -182,7 +204,9 @@ the conversation was at 146k: the gap 9b closes. One turn is an anecdote, not ev
 - [ ] Verify the subagent layout on real subagent logs.
 - [ ] Fit calibration weights per token type once there are many readings.
 - [ ] Publish to PyPI so `uvx tokcast` works directly.
-- [ ] Milestone 9d: README section for the mod and a demo (synthetic data).
+- [ ] Milestone 10: starting guess for % of limit (see the plan above), after a few days
+  of readings.
+- [ ] A demo GIF of the mod on synthetic data (`tokcastHome` pointing at the demo).
 - [ ] Check the weekly calibration once real 7d readings exist: one reading per turn moves
   slowly, and readings under 2% are skipped.
 - [ ] Run the mod's tests in CI once the Claude Code binary can be installed there.

@@ -99,6 +99,38 @@ TOKCAST_HOME=tokcast-demo/db tokcast predict "fix the login bug"
 
 Every report command has `--json`, so other tools can use the same data.
 
+## In Claude Code: tokcast-buddy
+
+The same predictions without leaving Claude Code. [tokcast-buddy](integrations/claude-code/)
+is a Claude Code mod: a small character in the band above the prompt box, in the terminal
+and the desktop app. Type a prompt, click **How much will this cost?**, and it answers
+before you send:
+
+```
+(•o•) [ How much will this cost? ] [ × ]
+  ~552k tokens (183k–2.5M) for a bugfix turn
+  5h limit: 24% used now → this turn ≈ +3% (1%–9%)
+  weekly limit: 41% used now → this turn: learning your limit (1/3 readings)
+  basis: 518 of your bugfix turns · this conversation: 120k tokens of context so far
+  tip: in a new chat this would be ~300k tokens
+```
+
+- **It prices your draft in the conversation you're in.** The mod passes the live context
+  size, model and effort to `tokcast predict`, so a follow-up in a long chat isn't priced
+  like a new one.
+- **"% used now" is Claude Code's own figure** for the 5-hour and weekly windows. What the
+  turn would *add* is learned (see [calibration](docs/calibration.md)). The mod collects
+  the readings for that itself after every turn, so no status-line setup is needed.
+- **It runs tokcast locally** (the draft goes to it on stdin) and only when you click,
+  because each run starts Python and DuckDB.
+
+```bash
+uv tool install --editable .                    # puts `tokcast` on your PATH
+claude --plugin-dir integrations/claude-code    # loads the mod for this session
+```
+
+Options, tests and design notes are in the [mod's README](integrations/claude-code/README.md).
+
 ## How prediction works
 
 ```mermaid
@@ -176,6 +208,9 @@ small real histories yet. So the simpler baseline remains the default.
 - Synthetic data is refused by the real database unless you point `TOKCAST_HOME` elsewhere.
 - tokcast never edits your Claude Code settings; `statusline --setup` prints the snippet
   for you to add.
+- The Claude Code mod sends your draft only to the local `tokcast` process. After each
+  turn it saves the usage reading and runs `tokcast ingest` (turn off with its
+  `autoIngest` option); a separate `TOKCAST_HOME` is never auto-ingested.
 
 ## Limitations
 
@@ -193,9 +228,17 @@ small real histories yet. So the simpler baseline remains the default.
 - **Subagent support** follows community reports of the file layout; it isn't verified on
   real subagent logs yet.
 - **Claude Code only** for now.
+- **The mod's "+x% for this turn" needs 3 readings per window,** so a new user sees only
+  "% used now" at first. The weekly window moves slowly, so it can take days.
+- **The mod hides while Claude Code shows something else above the prompt** (a question
+  box, a survey). Close that box and the character comes back.
 
 ## Roadmap
 
+- **Next: a starting guess for "% of limit"** per plan (Pro, Max 5x, Max 20x), labelled
+  "assumed" and refined by your readings with the same shrinkage the token model uses,
+  so new users see a percentage from their first prompt. Adopted only if it beats the
+  current method on held-out readings.
 - **v2: browser extension for claude.ai**, showing a live estimate under the input box.
   `predict --json` and the `Predictor` interface are already the API it needs.
 - **v3: suggestions**, e.g. "Sonnet is enough for this" or "you have ~12% left; this
@@ -229,11 +272,14 @@ A detailed comparison, including what users of these tools ask for, is in
 
 ```bash
 uv sync                                  # Python 3.12, dev tools and the ml extra
-uv run pytest                            # 133 tests, about 30 s
+uv run pytest                            # 135 tests, about 30 s
 uv run ruff check . && uv run ruff format --check .
 ```
 
-CI runs the same on every push. Fixture logs in `tests/fixtures/` are handwritten, and
+The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 28
+tests). They need the Claude Code binary, so CI doesn't run them yet.
+
+CI runs the Python checks on every push. Fixture logs in `tests/fixtures/` are handwritten, and
 `.gitignore` blocks real logs and databases.
 
 ```
@@ -248,6 +294,7 @@ src/tokcast/
   synth/       synthetic log generator
   stats/       usage report
   cli.py       Typer commands; render.py: Rich output
+integrations/claude-code/   the tokcast-buddy mod (TypeScript)
 ```
 
 The data model is described in [docs/schema.md](docs/schema.md).
