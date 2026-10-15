@@ -23,11 +23,13 @@ estimates before you send it:
 - The prediction runs only on a click, not on every keystroke: each run starts Python and
   DuckDB (about a second).
 - Sending a prompt clears the bubble, because the estimate was for that draft.
-- **It steps aside when Claude Code needs the space.** When something else holds the band
-  above the prompt (a question box, a survey), Claude Code sets `hasSurvey` and the mod
-  draws nothing, as mods are meant to. Close that box and the character returns. (During
-  development this looked like a bug: the character "vanished" after every turn that
-  ended with a question box.)
+- **It shares the band with Claude Code.** Claude Code draws its own boxes there (a
+  survey, a question) and tells hooks with `hasSurvey`. The mod keeps that drawing whole
+  and first, and draws the character under it. (The first version stepped aside, and the
+  character seemed to vanish after every turn that ended with such a box.)
+- **You choose how much of it shows,** and the choice is kept across sessions (`$.store`):
+  **hide** shrinks it to its face, clicking the face opens it again, and `/tokcast off`
+  removes it completely.
 - `hooks/args.ts` passes what the session knows, so follow-ups aren't priced as new chats:
 
   | flag | from | when unknown |
@@ -47,6 +49,18 @@ estimates before you send it:
 - tokcast calls run one at a time (DuckDB allows one writer), and the after-turn work runs
   on a timer so it never delays the turn.
 
+## The `/tokcast` command
+
+Answered by the mod itself, never sent to the model, so it costs no tokens:
+
+| command | does |
+|---|---|
+| `/tokcast <prompt>` | estimates that prompt and answers in the conversation, even when the band is hidden or busy |
+| `/tokcast show` | the full character: face, button and answer |
+| `/tokcast hide` | just the face; click it to open |
+| `/tokcast off` | nothing above the prompt; `/tokcast show` brings it back |
+| `/tokcast` | lists these |
+
 ## Try it
 
 1. Put `tokcast` on your PATH: `uv tool install --editable .` from the repo root.
@@ -64,7 +78,7 @@ The mod has two options (`/config`, or `pluginConfigs` in settings):
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 28 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 37 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 

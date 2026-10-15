@@ -123,6 +123,9 @@ before you send:
   the readings for that itself after every turn, so no status-line setup is needed.
 - **It runs tokcast locally** (the draft goes to it on stdin) and only when you click,
   because each run starts Python and DuckDB.
+- **You decide how much it shows:** a **hide** button shrinks it to its face, and
+  `/tokcast show | hide | off` sets it from the prompt. `/tokcast <prompt>` answers in the
+  conversation instead of the band.
 
 ```bash
 uv tool install --editable .                    # puts `tokcast` on your PATH
@@ -230,8 +233,9 @@ small real histories yet. So the simpler baseline remains the default.
 - **Claude Code only** for now.
 - **The mod's "+x% for this turn" needs 3 readings per window,** so a new user sees only
   "% used now" at first. The weekly window moves slowly, so it can take days.
-- **The mod hides while Claude Code shows something else above the prompt** (a question
-  box, a survey). Close that box and the character comes back.
+- **The mod shares the space above the prompt with Claude Code's own boxes** (a survey,
+  a question): it draws under them. `/tokcast hide` shrinks it to its face and
+  `/tokcast off` removes it; `/tokcast <prompt>` estimates without the band at all.
 
 ## Roadmap
 
@@ -276,7 +280,7 @@ uv run pytest                            # 135 tests, about 30 s
 uv run ruff check . && uv run ruff format --check .
 ```
 
-The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 28
+The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 37
 tests). They need the Claude Code binary, so CI doesn't run them yet.
 
 CI runs the Python checks on every push. Fixture logs in `tests/fixtures/` are handwritten, and

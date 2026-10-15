@@ -8,12 +8,17 @@ import type { Bubble } from '../types'
 import { predictArgs, statuslinePayload, usedNow } from './args'
 import type { RateLimit } from './args'
 import { firstLine, parse } from './bubble'
+import { HELP, VIEW_MESSAGES, isView, parseCommand } from './command'
+import type { View } from './command'
 
 const bubble = atom({ plugin: 'tokcast-buddy', key: 'bubble' } as const, {
   kind: 'idle',
 } as Bubble)
 // The session's effort as the last main-loop model request carried it.
 const effort = atom({ plugin: 'tokcast-buddy', key: 'effort' } as const, '')
+// How the character shows; $.state redraws the band, $.store remembers it.
+const view = atom({ plugin: 'tokcast-buddy', key: 'view' } as const, 'full' as View)
+const VIEW_KEY = 'view'
 
 const FACES: Record<Bubble['kind'], string> = {
   idle: '(•ᴗ•)',
@@ -57,33 +62,24 @@ async function refresh($: EngineInterface, cfg: Config): Promise<void> {
   if (cfg.autoIngest && !cfg.home) await runTokcast($, cfg, ['ingest'], '')
 }
 
-// Runs tokcast on the draft and puts the result in the bubble.
-async function estimate($: EngineInterface, cfg: Config): Promise<void> {
-  const { text } = await $.prompt.read()
-  if (text.trim() === '') {
-    await update($, bubble, (): Bubble => ({ kind: 'error', lines: ['Type a prompt first, then ask me.'] }))
-    return
-  }
-
-  await update($, bubble, (): Bubble => ({ kind: 'thinking' }))
+// Runs tokcast on a prompt in this session's situation: the answer, or why not.
+async function forecast($: EngineInterface, cfg: Config, text: string): Promise<Bubble> {
   const { context, rateLimits } = await $.session.usage()
   const argv = predictArgs([], {
     contextTokens: context.tokens,
     model: await $.session.model(),
     effort: (await read($, effort)) || undefined,
   })
-  let next: Bubble
   try {
     await recordReadings($, cfg, rateLimits)
     const result = await runTokcast($, cfg, argv, text)
     if (result.exitCode !== 0) {
-      next = { kind: 'error', lines: [`tokcast failed: ${firstLine(result.stderr || result.stdout)}`] }
-    } else {
-      const { lines, ok } = parse(result.stdout, usedNow(rateLimits))
-      next = { kind: ok ? 'answer' : 'error', lines }
+      return { kind: 'error', lines: [`tokcast failed: ${firstLine(result.stderr || result.stdout)}`] }
     }
+    const { lines, ok } = parse(result.stdout, usedNow(rateLimits))
+    return { kind: ok ? 'answer' : 'error', lines }
   } catch {
-    next = {
+    return {
       kind: 'error',
       lines: [
         `Couldn't run "${cfg.command.join(' ')}".`,
@@ -91,7 +87,24 @@ async function estimate($: EngineInterface, cfg: Config): Promise<void> {
       ],
     }
   }
+}
+
+// The band's button: estimate the draft in the prompt box and show it in the bubble.
+async function estimate($: EngineInterface, cfg: Config): Promise<void> {
+  const { text } = await $.prompt.read()
+  if (text.trim() === '') {
+    await update($, bubble, (): Bubble => ({ kind: 'error', lines: ['Type a prompt first, then ask me.'] }))
+    return
+  }
+  await update($, bubble, (): Bubble => ({ kind: 'thinking' }))
+  const next = await forecast($, cfg, text)
   await update($, bubble, () => next)
+}
+
+// Shows, shrinks or hides the character; the choice is kept across sessions.
+async function setView($: EngineInterface, value: View): Promise<void> {
+  await update($, view, () => value)
+  await $.store.set(VIEW_KEY, value)
 }
 
 export const register: Register = (on, options) => {
@@ -100,6 +113,29 @@ export const register: Register = (on, options) => {
     home: String(options.tokcastHome ?? ''),
     autoIngest: options.autoIngest !== false,
   }
+
+  // Register /tokcast and restore the last show/hide choice.
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'tokcast',
+      description: 'Estimate a prompt, or show / hide / turn off the tokcast character',
+    })
+    const saved = await $.store.get(VIEW_KEY)
+    if (isView(saved)) await update($, view, () => saved)
+    return next(e)
+  })
+
+  // Answered here, never sent to the model, so it costs no tokens.
+  on('command.run', { command: 'tokcast' }, async ($, e) => {
+    const cmd = parseCommand(e.args)
+    if (cmd.action === 'help') return { text: HELP }
+    if (cmd.action === 'view') {
+      await setView($, cmd.view)
+      return { text: VIEW_MESSAGES[cmd.view] }
+    }
+    const answer = await forecast($, cfg, cmd.text)
+    return { text: answer.kind === 'answer' || answer.kind === 'error' ? answer.lines.join('\n') : '' }
+  })
 
   // Readings and logs change after every turn. The work runs on a timer, outside
   // this hook's dispatch, so it never delays the turn's end.
@@ -128,7 +164,8 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) {
+    const mode = await read($, view)
+    if (mode === 'off') {
       return next(e)
     }
 
@@ -137,35 +174,55 @@ export const register: Register = (on, options) => {
     const state: Bubble = saved && saved.kind in FACES ? saved : { kind: 'idle' }
     const { Box, Button, Text } = $.ui.resolve(e)
     const isBusy = state.kind === 'thinking'
+    const hasAnswer = state.kind === 'answer' || state.kind === 'error'
 
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row" gap={1}>
-          <Text bold color="cyan">
-            {FACES[state.kind]}
-          </Text>
-          <Button
-            key="estimate"
-            label={isBusy ? 'Thinking...' : 'How much will this cost?'}
-            onPress={() => (isBusy ? undefined : estimate($, cfg))}
-          />
-          {state.kind === 'answer' || state.kind === 'error' ? (
-            <Button
-              key="dismiss"
-              label="×"
-              onPress={() => update($, bubble, (): Bubble => ({ kind: 'idle' }))}
-            />
-          ) : null}
+    const mine =
+      mode === 'mini' ? (
+        <Box flexDirection="row">
+          <Button key="open" label={`${FACES[state.kind]} tokcast`} onPress={() => setView($, 'full')} />
         </Box>
-        {(state.kind === 'answer' || state.kind === 'error') && Array.isArray(state.lines)
-          ? state.lines.map((line, i) => (
-              <Text dimColor={i > 0} color={state.kind === 'error' ? 'red' : undefined}>
-                {'  '}
-                {line}
-              </Text>
-            ))
-          : null}
-      </Box>
-    )
+      ) : (
+        <Box flexDirection="column">
+          <Box flexDirection="row" gap={1}>
+            <Text bold color="cyan">
+              {FACES[state.kind]}
+            </Text>
+            <Button
+              key="estimate"
+              label={isBusy ? 'Thinking...' : 'How much will this cost?'}
+              onPress={() => (isBusy ? undefined : estimate($, cfg))}
+            />
+            {hasAnswer ? (
+              <Button
+                key="dismiss"
+                label="×"
+                onPress={() => update($, bubble, (): Bubble => ({ kind: 'idle' }))}
+              />
+            ) : null}
+            <Button key="hide" label="hide" onPress={() => setView($, 'mini')} />
+          </Box>
+          {hasAnswer && Array.isArray(state.lines)
+            ? state.lines.map((line, i) => (
+                <Text dimColor={i > 0} color={state.kind === 'error' ? 'red' : undefined}>
+                  {'  '}
+                  {line}
+                </Text>
+              ))
+            : null}
+        </Box>
+      )
+
+    // Claude Code draws its own boxes here (a survey, a question). Keep them whole
+    // and first, and draw the character under them instead of disappearing.
+    if (e.props.hasSurvey) {
+      const theirs = await next(e)
+      return (
+        <Box flexDirection="column">
+          {theirs}
+          {mine}
+        </Box>
+      )
+    }
+    return mine
   })
 }
