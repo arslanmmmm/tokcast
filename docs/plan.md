@@ -1,7 +1,8 @@
 # Plan, progress and decisions
 
-**Status (2026-10-15): v0.1 complete.** All eight milestones are done; 133 tests pass and CI
-is green. This file records what was built, the decisions behind it, and what's next.
+**Status (2026-10-15): v0.1 complete.** All eight milestones are done, plus one fix found
+while demoing on real data; 134 tests pass and CI is green. This file records what was
+built, the decisions behind it, and what's next.
 
 ## Milestones
 
@@ -18,6 +19,7 @@ is green. This file records what was built, the decisions behind it, and what's 
 | 6 | Quantile regression challenger (baseline kept as default) | ✅ | `405a6e5`, `47ab3fc`, `380a102` |
 | 7 | `calibrate` + `statusline`: tokens → % of usage limit | ✅ | `5922e08` |
 | 8 | README, data model docs, demo tape | ✅ | `505ff6a` |
+| — | Fix: strip `<pasted_content>` wrapper tags from prompts (found on real data) | ✅ | `a45b2b6` |
 
 ## Key decisions
 
@@ -46,7 +48,12 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
    the same session at or before the call), since their parent links point into another
    file. The file layout comes from community reports and isn't verified on real logs.
 8. **Prompt text is refreshed on re-ingest** (`ingest --full`), so parser fixes reach old
-   rows. An example is stripping the `<system-reminder>` blocks the desktop app injects.
+   rows. Two such fixes so far, both for text the desktop app adds to the user's message:
+   - `<system-reminder>` blocks are removed entirely: they're context for the model, not
+     the user's words.
+   - `<pasted_content id="...">` wrapper tags are removed, but the text inside is kept: it
+     is the user's prompt. The closing tag repeats the id, so the pattern allows
+     attributes on both tags.
 9. **Explicit casts at type boundaries:** `SUM` → `BIGINT` (DuckDB returns int128) and
    weighted tokens → `DOUBLE` (DuckDB returns `DECIMAL`). Missing text from pandas is `NaN`,
    so the type is checked rather than tested for truthiness.
@@ -105,15 +112,23 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
 
 ## Findings from the author's real logs
 
-As of 2026-10-15: 2 projects, about 50 turns, about 340 API calls, all opus at medium
-effort.
+As of 2026-10-15: 2 projects, 63 turns, 440 API calls, 120M tokens processed, all opus at
+medium effort.
 - 98% of tokens processed were cache reads; output was 0.4%.
-- A call at 200–400k context costs about 3× one at 50–100k. First turns are the most
-  expensive (median 1.9M tokens, 18 calls).
+- A call at 400k+ context costs about 6× one at 50–100k (the long tokcast-building
+  conversation added the 400k+ bucket). First turns are the most expensive (median 1.9M
+  tokens, 18 calls).
 - No suspicious usage values for Claude Code 2.1.295. The undercount reported in ccusage
   #866 doesn't appear in this version.
-- Real-data eval: too few test turns (26) to separate methods; a distribution shift was
-  diagnosed.
+- Real-data eval:
+  - At Milestone 5 (26 test turns): too few to separate methods; a distribution shift was
+    diagnosed, and the baseline under-predicted (bias ×0.50).
+  - With 62 turns (31 test turns), without any model change: the baseline had the best
+    pinball loss of all methods (0.276, against 0.299 for context × re-reads), no bias
+    (×0.99) and 71% coverage (±16, so not clearly below the 80% target). This supports
+    the decision not to tune on the first 26 turns. It's still a small sample.
+- Real data found three things the synthetic data couldn't: injected `<system-reminder>`
+  blocks, `<pasted_content>` wrapper tags, and conversations growing past 400k tokens.
 
 ## Next steps
 
