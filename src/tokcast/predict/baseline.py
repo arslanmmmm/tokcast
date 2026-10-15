@@ -43,6 +43,7 @@ class Query:
     effort: str
     first_turn: bool
     context_tokens: float  # context the turn starts with, including the prompt
+    prompt_tokens: int = 0  # size of the prompt itself (part of context_tokens)
 
 
 @dataclass(frozen=True)
@@ -118,7 +119,8 @@ class _LogTarget:
             _Dimension("effort", effort, "medium"),
             _Dimension("model", model, "sonnet"),
         ]
-        self.groups: dict[str, np.ndarray] = {}
+        # task type (or "*" for all) -> (log quantiles, number of turns), computed at fit
+        self.groups: dict[str, tuple[np.ndarray, int]] = {}
 
     def fit(self, df: pd.DataFrame, y: pd.Series) -> None:
         if df.empty:
@@ -132,8 +134,8 @@ class _LogTarget:
             residual = residual - dim.shift(df[dim.column])
         adjusted = y - sum(dim.shift(df[dim.column]) for dim in self.dims)
         for task, part in adjusted.groupby(df["task_type"]):
-            self.groups[str(task)] = part.to_numpy()
-        self.groups["*"] = adjusted.to_numpy()
+            self.groups[str(task)] = (np.quantile(part, QUANTILES), len(part))
+        self.groups["*"] = (np.quantile(adjusted, QUANTILES), len(adjusted))
 
     @staticmethod
     def _task_median(df: pd.DataFrame, y: pd.Series) -> pd.Series:
@@ -143,9 +145,9 @@ class _LogTarget:
     def quantiles(self, task_type: str) -> tuple[np.ndarray, str, int] | None:
         """Adjusted-log quantiles of the narrowest group with enough turns."""
         for key, level in ((task_type, "task"), ("*", "all")):
-            values = self.groups.get(key)
-            if values is not None and len(values) >= MIN_GROUP:
-                return np.quantile(values, QUANTILES), level, len(values)
+            found = self.groups.get(key)
+            if found is not None and found[1] >= MIN_GROUP:
+                return found[0], level, found[1]
         return None
 
     def shift_for(self, q: Query) -> float:

@@ -85,7 +85,14 @@ def forecast(
     context = ContextInfo(context_mode, tokens, len(prompt) // CHARS_PER_TOKEN, context_note)
 
     def estimate(m: str, e: str, *, tokens: float, first: bool) -> Estimate:
-        q = Query(classification.task_type, m, e, first, tokens + context.prompt_tokens)
+        q = Query(
+            classification.task_type,
+            m,
+            e,
+            first,
+            tokens + context.prompt_tokens,
+            context.prompt_tokens,
+        )
         return predictor.predict(q)
 
     options = options_to_compare(model, effort) if compare else [(model, effort)]
