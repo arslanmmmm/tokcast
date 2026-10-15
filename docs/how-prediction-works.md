@@ -129,6 +129,43 @@ kind of shift than one that pools everything. Weighting recent turns more is the
 remedy, but it was deliberately *not* tuned on these 26 turns: that would overfit the
 test set. It will be tested once more real history exists.
 
+## Challenger: quantile regression (and why the baseline stayed)
+
+Milestone 6 tried scikit-learn quantile regression on the same targets and features (one
+model per quantile, each minimising the pinball loss for its quantile), as a linear model
+and as gradient-boosted trees. The rule, written down *before* seeing results: replace
+the baseline only if it is better by more than noise and stays calibrated.
+
+`tokcast eval` compares methods on the *same* turns, so it reports the **paired**
+difference in pinball loss with a 95% interval. That cancels out how hard each turn is,
+and detects much smaller real differences than comparing two averages.
+
+Backtest on synthetic data: 2,840 turns, the newest 1,420 predicted walk-forward in 5 folds (tokens processed per turn).
+
+| method | in 80% range | within 2x | bias | width | pinball loss | vs baseline (95% CI) |
+|---|---|---|---|---|---|---|
+| global median | 80% ±2 | 37% | x1.03 | x35 | 0.332 | +0.126 [+0.115, +0.136] |
+| single call (ctok-style) | 30% ±2 | 30% | x0.33 | x1 | 0.629 | +0.422 [+0.395, +0.449] |
+| context x re-reads | 79% ±2 | 37% | x1.00 | x19 | 0.289 | +0.083 [+0.074, +0.091] |
+| assumptions only | 80% ±2 | 60% | x1.19 | x10 | 0.231 | +0.024 [+0.019, +0.029] |
+| **tokcast baseline** | 80% ±2 | 63% | x1.00 | x11 | 0.207 |  |
+| quantile regression (linear) | 79% ±2 | 62% | x1.00 | x10 | 0.201 | -0.006 [-0.008, -0.003] |
+
+- **Boosted trees** were no more accurate than the linear model, covered only 75% of
+  turns with their 80% range (too narrow), and took 4x longer to fit. Dropped.
+- **Linear quantile regression** is about 3% better than the baseline on synthetic data,
+  and the interval excludes zero. Formally it passes the rule. It still isn't the default:
+  1. The win comes only from synthetic data, which favours it by construction: the
+     generator *is* a multiplicative model in logs, exactly the shape it fits.
+  2. On real history it can't be tested yet: it needs 150 training turns, and the real
+     folds had 27-48.
+  3. It can't handle a model or effort level it has never seen (it defers to the baseline
+     there), and it needs scikit-learn (`pip install 'tokcast[ml]'`, ~100 MB).
+
+So the baseline stays the default and `tokcast predict --method qreg` is available. Because
+`tokcast eval` keeps scoring both, the same paired test will settle the question on real
+data once there is enough of it.
+
 ## Limitations
 
 - Output length is inherently uncertain; ranges are wide on purpose.

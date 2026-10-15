@@ -20,17 +20,21 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import pandas as pd
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from tokcast import __version__, config, render
 from tokcast.evaluate import backtest
+from tokcast.evaluate.reference import ml_available
 from tokcast.features.build import current_conversation, load_turns, new_chat_context
 from tokcast.ingest import pipeline
 from tokcast.ingest.sources import ClaudeCodeSource
-from tokcast.predict import forecast, priors
+from tokcast.predict import BaselinePredictor, forecast, priors
 from tokcast.stats import build_report
 from tokcast.storage import db
 from tokcast.synth import generator as synth_gen
+
+PIP_ML = "pip install 'tokcast[ml]'"
 
 app = typer.Typer(
     help="Forecast Claude Code token usage before you send a prompt. Local-only.",
@@ -156,9 +160,13 @@ def predict(
         False, "--continue", "-c", help="Continue your most recent conversation (as of ingest)."
     ),
     compare: bool = typer.Option(True, "--compare/--no-compare", help="Show alternatives."),
+    method: str = typer.Option(
+        "baseline", "--method", help="baseline, or qreg (quantile regression; needs tokcast[ml])."
+    ),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
 ) -> None:
     """Estimate how many tokens a prompt will use, before you send it."""
+    predictor = _predictor(method)
     if prompt == "-":
         prompt = sys.stdin.read()
     if context and continue_:
@@ -206,11 +214,27 @@ def predict(
         conversation=conversation,
         new_chat_tokens=fresh or None,
         compare=compare,
+        predictor=predictor,
     )
     if as_json:
         print(json.dumps(asdict(result), default=str, indent=2))
     else:
         render.render_forecast(result, console)
+
+
+def _predictor(method: str):
+    if method == "baseline":
+        return BaselinePredictor()
+    if method == "qreg":
+        if not ml_available():
+            # escape(): Rich would otherwise read "[ml]" as a style tag and drop it.
+            console.print(f"[red]--method qreg needs scikit-learn:[/] {escape(PIP_ML)}")
+            raise typer.Exit(1)
+        from tokcast.predict.qreg import QuantileRegressionPredictor
+
+        return QuantileRegressionPredictor("linear")
+    console.print(f"[red]Unknown method:[/] {method} (use baseline or qreg)")
+    raise typer.Exit(1)
 
 
 def _model_family(name: str) -> str:

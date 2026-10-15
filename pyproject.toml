@@ -26,6 +26,11 @@ dependencies = [
 [project.scripts]
 tokcast = "tokcast.cli:app"
 
+[project.optional-dependencies]
+ml = [
+    "scikit-learn>=1.9.1",
+]
+
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14.0"]
 build-backend = "uv_build"
@@ -35,6 +40,13 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.17.0",
 ]
+ml = [
+    "scikit-learn>=1.9.1",
+]
+
+[tool.uv]
+# Development installs the optional ML extra too, so every test runs locally and in CI.
+default-groups = ["dev", "ml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
