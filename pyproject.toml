@@ -23,6 +23,11 @@ dependencies = [
     "typer>=0.27.3",
 ]
 
+[project.urls]
+Homepage = "https://github.com/arslanmmmm/tokcast"
+Documentation = "https://github.com/arslanmmmm/tokcast/tree/main/docs"
+Issues = "https://github.com/arslanmmmm/tokcast/issues"
+
 [project.scripts]
 tokcast = "tokcast.cli:app"
 

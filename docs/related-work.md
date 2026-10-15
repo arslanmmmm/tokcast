@@ -17,7 +17,7 @@ tool call that follows), learned from your own logs, with backtested accuracy.
 | [ccusage](https://github.com/ccusage/ccusage) (19k★) | ❌ linear projection for the active 5-hour block | Past usage per model, not predictive | ➖ (reports, no forecasting model) | ⚠️ logs stay local; pricing is fetched online unless `--offline` | ✅ Claude Code + ~18 other tools | Status line (beta) |
 | [claumon](https://github.com/fabioconcina/claumon) (16★) | ❌ window-level: utilization at reset with 80% interval | Per-model quota gauges (measured) | ✅ model spec published, `claumon bench` (pinball/CRPS, coverage, bias) | ❌ polls Anthropic's OAuth usage API by design | ✅ | ✅ browser dashboard + VS Code |
 | [ctok](https://github.com/ctok-cli/ctok) (2★) | ⚠️ single request, fixed heuristics, no history | ✅ recommends model + effort | Claimed (±20% for 85%+ of prompts), no reproducible eval | ✅ | ❌ | ❌ |
-| **tokcast** | ✅ whole turn, range, from your own history | ✅ side-by-side ranges | ✅ planned: `tokcast eval` backtest | ✅ enforced by a test | ✅ | ❌ by design (v2: browser extension) |
+| **tokcast** | ✅ whole turn, range, from your own history | ✅ side-by-side ranges | ✅ `tokcast eval`: walk-forward backtest, paired comparison | ✅ enforced by a test | ✅ | ❌ by design (v2: browser extension) |
 
 Forks: [contiamo/cc-usage-monitor](https://github.com/contiamo/cc-usage-monitor) and
 [0xKirin/claude-code-usage-monitor](https://github.com/0xKirin/claude-code-usage-monitor)
