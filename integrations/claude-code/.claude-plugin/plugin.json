@@ -1,0 +1,23 @@
+{
+  "name": "tokcast-buddy",
+  "version": "0.1.0",
+  "description": "A small character above the prompt box: click it to see what tokcast predicts your draft will cost.",
+  "author": {
+    "name": "Arslan"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "command": {
+      "type": "string",
+      "title": "tokcast command",
+      "description": "How to run tokcast, split on spaces, e.g. 'tokcast' or 'uv run --project /path/to/tokcast tokcast'.",
+      "default": "tokcast"
+    },
+    "tokcastHome": {
+      "type": "string",
+      "title": "TOKCAST_HOME",
+      "description": "Optional database folder (e.g. a synthetic demo). Empty: tokcast's default.",
+      "default": ""
+    }
+  }
+}
