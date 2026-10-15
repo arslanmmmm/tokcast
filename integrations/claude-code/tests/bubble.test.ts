@@ -7,7 +7,7 @@ import type { Forecast } from '../hooks/bubble'
 function forecast(over: Partial<Forecast['estimates'][0]> = {}, readings = 0): Forecast {
   return {
     classification: { task_type: 'bugfix' },
-    context: { mode: 'new chat', note: 'median of your 200 first turns' },
+    context: { mode: 'new chat', tokens: 60210, note: 'median of your 200 first turns' },
     estimates: [
       {
         total: { low: 183185, median: 552233, high: 2531723 },
@@ -18,6 +18,7 @@ function forecast(over: Partial<Forecast['estimates'][0]> = {}, readings = 0): F
         ...over,
       },
     ],
+    new_chat: null,
     limit_window: '5h',
     limit_readings: readings,
   }

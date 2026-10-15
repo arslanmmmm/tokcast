@@ -1,8 +1,9 @@
 # Plan, progress and decisions
 
-**Status (2026-10-15): v0.1 complete.** All eight milestones are done, plus one fix found
-while demoing on real data; 134 tests pass and CI is green. This file records what was
-built, the decisions behind it, and what's next.
+**Status (2026-10-15): v0.1 complete; milestone 9 (Claude Code mod) in progress.** All
+eight v0.1 milestones are done, plus one fix found while demoing on real data; 134 Python
+tests pass and CI is green. Milestone 9 adds a mod for Claude Code (18 tests of its own).
+This file records what was built, the decisions behind it, and what's next.
 
 ## Milestones
 
@@ -20,6 +21,9 @@ built, the decisions behind it, and what's next.
 | 7 | `calibrate` + `statusline`: tokens → % of usage limit | ✅ | `5922e08` |
 | 8 | README, data model docs, demo tape | ✅ | `505ff6a` |
 | — | Fix: strip `<pasted_content>` wrapper tags from prompts (found on real data) | ✅ | `a45b2b6` |
+| 9a | Claude Code mod: a character above the prompt that predicts the draft on click | ✅ | `2215b65` |
+| 9b | Mod passes the live context size, model and effort | ✅ | after `2215b65` |
+| 9c | Mod: README section, demo | ⏳ | |
 
 ## Key decisions
 
@@ -110,6 +114,25 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
 22. **Escape all user text before Rich prints it.** `[/bold]` in a prompt crashed the
     output, and the `[ml]` in the install hint was silently dropped.
 
+### Claude Code mod (`integrations/claude-code/`)
+
+23. **A Claude Code mod rather than a separate app.** The mod draws in the band above the
+    prompt box on both the terminal and the desktop app, reads the draft with
+    `$.prompt.read()` and runs the CLI as a local process (draft on stdin, `--json` out).
+    The CLI stays the one place predictions are made. *Rejected: an overlay app (it can't
+    read the prompt box), and reimplementing the model in TypeScript (two models to keep
+    in sync).* claude.ai on the web is out of reach for a mod; that's still the roadmap's
+    browser extension.
+24. **Predict on a click, not on each keystroke.** Each run starts Python and DuckDB (~1 s).
+25. **Pass the session's live facts:** context tokens from `$.session.usage()`, the model
+    from `$.session.model()`, effort from the last main-loop `turn.step` (subagent
+    requests ignored: their effort isn't the session's). Anything unknown is left out so
+    tokcast falls back to its labelled default. *Rejected: `--continue`, which reads the
+    last conversation as of the last ingest and so lags the live one.*
+26. **Pure modules for logic** (`args.ts`, `bubble.ts`) and engine test-kit tests for the
+    band on both surfaces, with the prompt box, session and process stubbed. The mod's
+    tests need the Claude Code binary, so they don't run in CI yet.
+
 ## Findings from the author's real logs
 
 As of 2026-10-15: 2 projects, 63 turns, 440 API calls, 120M tokens processed, all opus at
@@ -139,6 +162,8 @@ medium effort.
 - [ ] Verify the subagent layout on real subagent logs.
 - [ ] Fit calibration weights per token type once there are many readings.
 - [ ] Publish to PyPI so `uvx tokcast` works directly.
+- [ ] Milestone 9c: README section for the mod and a demo (synthetic data).
+- [ ] Run the mod's tests in CI once the Claude Code binary can be installed there.
 - [ ] Roadmap:
   - v2: claude.ai browser extension using `predict --json`
   - v3: suggestions

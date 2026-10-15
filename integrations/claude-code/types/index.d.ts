@@ -7,6 +7,6 @@ export type Bubble =
 
 declare module 'claude-code' {
   interface PluginState {
-    'tokcast-buddy': { bubble: Bubble }
+    'tokcast-buddy': { bubble: Bubble; effort: string }
   }
 }

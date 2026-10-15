@@ -26,11 +26,21 @@ const FORECAST = JSON.stringify({
   limit_readings: 0,
 })
 
-// The test's hooks stand in for the engine: the prompt box holds `draft`, and
-// every command run is recorded and answered with `answer`.
-function engine(on: On, draft: string, answer: { exitCode: number; stdout: string; stderr: string }) {
+// The test's hooks stand in for the engine: the prompt box holds `draft`, the
+// session has `contextTokens` of context (none: fresh), and every command run is
+// recorded and answered with `answer`.
+function engine(
+  on: On,
+  draft: string,
+  answer: { exitCode: number; stdout: string; stderr: string },
+  contextTokens?: number,
+) {
   const runs: Array<{ argv: readonly string[]; init?: ProcessRunInit }> = []
   on('prompt.read', () => ({ value: { text: draft, cursor: draft.length } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({
+    value: { startedAt: 0, context: { tokens: contextTokens, window: 200_000 }, rateLimits: [] },
+  }))
   on('process.run', (_$, e) => {
     runs.push(e)
     return { value: { ...answer, isStdoutTruncated: false, isStderrTruncated: false } }
@@ -46,7 +56,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await ui.press({ key: 'estimate' })
 
     expect(runs).toHaveLength(1)
-    expect(runs[0]?.argv).toEqual(['tokcast', 'predict', '-', '--json', '--no-compare'])
+    expect(runs[0]?.argv).toEqual(['tokcast', 'predict', '-', '--json', '--no-compare', '--model', 'opus'])
     expect(runs[0]?.init?.stdin).toBe('fix the crash in the parser')
     expect(await ui.find({ type: 'Text', text: /~400k tokens/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /built-in assumption/ })).toBeDefined()
@@ -94,4 +104,31 @@ test('dismiss clears the bubble', async ($, on) => {
   await ui.press({ key: 'dismiss' })
 
   expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined()
+})
+
+test('a live conversation passes its context size', async ($, on) => {
+  const runs = engine(on, 'and now the tests', { exitCode: 0, stdout: FORECAST, stderr: '' }, 120_400)
+  const ui = await $.ui.mount({ plugin: 'tokcast-buddy', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+
+  await ui.press({ key: 'estimate' })
+
+  expect(runs[0]?.argv).toContain('--context')
+  expect(runs[0]?.argv).toContain('120400')
+})
+
+test("the main loop's effort is remembered for the next estimate", async ($, on) => {
+  const runs = engine(on, 'hello', { exitCode: 0, stdout: FORECAST, stderr: '' }, 50_000)
+  on('turn.step', async function* (_$, e) {
+    return { turnId: e.turnId, index: e.index, answer: 'ok', toolUses: [], stopReason: 'end_turn', usage: null }
+  })
+  const ui = await $.ui.mount({ plugin: 'tokcast-buddy', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+
+  // A subagent's request must not count; the main loop's must.
+  for await (const _ of $.turn.step({ turnId: 't', index: 0, model: 'haiku', effort: 'low', messageCount: 1, agentId: 'a1' })) {
+  }
+  for await (const _ of $.turn.step({ turnId: 't', index: 1, model: 'opus', effort: 'high', messageCount: 1 })) {
+  }
+  await ui.press({ key: 'estimate' })
+
+  expect(runs[0]?.argv.slice(-2)).toEqual(['--effort', 'high'])
 })

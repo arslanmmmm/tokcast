@@ -5,11 +5,14 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Bubble } from '../types'
+import { predictArgs } from './args'
 import { firstLine, parse } from './bubble'
 
 const bubble = atom({ plugin: 'tokcast-buddy', key: 'bubble' } as const, {
   kind: 'idle',
 } as Bubble)
+// The session's effort as the last main-loop model request carried it.
+const effort = atom({ plugin: 'tokcast-buddy', key: 'effort' } as const, '')
 
 const FACES: Record<Bubble['kind'], string> = {
   idle: '(•ᴗ•)',
@@ -27,10 +30,15 @@ async function estimate($: EngineInterface, command: string[], home: string): Pr
   }
 
   await update($, bubble, (): Bubble => ({ kind: 'thinking' }))
+  const { context } = await $.session.usage()
+  const argv = predictArgs(command, {
+    contextTokens: context.tokens,
+    model: await $.session.model(),
+    effort: (await read($, effort)) || undefined,
+  })
   let next: Bubble
   try {
-    // "-" makes tokcast read the prompt from stdin, so no length or quoting limits.
-    const result = await $.process.run([...command, 'predict', '-', '--json', '--no-compare'], {
+    const result = await $.process.run(argv, {
       stdin: text,
       env: home ? { TOKCAST_HOME: home } : undefined,
       timeoutMs: 20_000,
@@ -56,6 +64,16 @@ async function estimate($: EngineInterface, command: string[], home: string): Pr
 export const register: Register = (on, options) => {
   const command = String(options.command ?? 'tokcast').split(/\s+/).filter(Boolean)
   const home = String(options.tokcastHome ?? '')
+
+  // Effort isn't on $.session, so remember it from the main loop's requests.
+  // turn.step streams the model's reply: pass every chunk through untouched.
+  on('turn.step', async function* ($, e, next) {
+    if (!e.agentId && typeof e.effort === 'string') {
+      const level = e.effort
+      update($, effort, () => level).catch(() => undefined)
+    }
+    return yield* next(e)
+  })
 
   // A sent prompt makes the old estimate stale. Never block the prompt on this.
   on('prompt.submit', ($, e, next) => {

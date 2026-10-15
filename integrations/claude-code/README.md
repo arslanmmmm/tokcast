@@ -22,9 +22,15 @@ estimates before you send it:
 - The prediction runs only on a click, not on every keystroke: each run starts Python and
   DuckDB (about a second).
 - Sending a prompt clears the bubble, because the estimate was for that draft.
+- `hooks/args.ts` passes what the session knows, so follow-ups aren't priced as new chats:
 
-Milestone 9a predicts as if the prompt starts a **new chat**. Using the current
-conversation's size is milestone 9b.
+  | flag | from | when unknown |
+  |---|---|---|
+  | `--context` | `$.session.usage()`: the live context window | fresh session: tokcast's "new chat" |
+  | `--model` | `$.session.model()`, reduced to opus/sonnet/haiku/fable | tokcast's default |
+  | `--effort` | the last main-loop `turn.step` (the only event that carries it) | before the first turn: tokcast's default |
+
+  When a new chat would be clearly cheaper, the bubble adds a tip with that estimate.
 
 ## Try it
 
@@ -42,10 +48,10 @@ The mod has two options (`/config`, or `pluginConfigs` in settings):
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 13 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 18 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 
 `tsc` needs the API types that Claude Code writes into `.claude-plugin/types/` the first
-time it loads the mod (gitignored). The tests use the engine's test kit: the prompt box and
-`$.process.run` are stubbed, so they never start tokcast.
+time it loads the mod (gitignored). The tests use the engine's test kit: the prompt box, the
+session and `$.process.run` are stubbed, so they never start tokcast.
