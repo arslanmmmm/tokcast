@@ -7,10 +7,7 @@ from typer.testing import CliRunner
 
 from tokcast.cli import app
 from tokcast.evaluate import MIN_TURNS, backtest, pinball_loss, score, walk_forward_splits
-from tokcast.features.build import load_turns
-from tokcast.ingest import pipeline
-from tokcast.ingest.sources import ClaudeCodeSource
-from tokcast.storage import db
+from tokcast.evaluate.metrics import paired_difference, pinball_per_turn
 from tokcast.synth import generate
 
 runner = CliRunner()
@@ -50,17 +47,6 @@ def test_walk_forward_never_trains_on_the_future():
         assert train["ts"].max() < test["ts"].min()
 
 
-@pytest.fixture(scope="module")
-def synthetic_turns(tmp_path_factory):
-    logs = tmp_path_factory.mktemp("synth") / "logs"
-    generate(logs, sessions=150, seed=5)
-    con = db.connect(":memory:")
-    pipeline.ingest(con, ClaudeCodeSource(), logs)
-    turns = load_turns(con)
-    con.close()
-    return turns
-
-
 def test_backtest_on_synthetic_data(synthetic_turns):
     result = backtest(synthetic_turns, data="synthetic")
     ours = result.method("tokcast baseline").total
@@ -69,6 +55,24 @@ def test_backtest_on_synthetic_data(synthetic_turns):
     assert ours.pinball < result.method("context x re-reads").total.pinball
     assert result.method("single call (ctok-style)").total.coverage < 0.5  # ignores the tool loop
     assert result.n_test == round(result.n_turns * 0.5)
+    assert result.method("tokcast baseline").vs_baseline is None
+    mean, low, high = result.method("global median").vs_baseline
+    assert low <= mean <= high and low > 0  # clearly worse than the baseline
+
+
+def test_paired_difference_by_hand():
+    mean, low, high = paired_difference([3.0, 5.0, 4.0], [1.0, 2.0, 3.0])  # diffs 2, 3, 1
+    assert mean == 2.0
+    assert high - mean == pytest.approx(1.96 * 1.0 / math.sqrt(3))  # sd of (2, 3, 1) is 1
+    assert mean - low == pytest.approx(high - mean)
+
+
+def test_pinball_per_turn_matches_the_average():
+    actual = [100, 1000]
+    preds = [[50, 100, 200], [100, 500, 4000]]
+    per_turn = pinball_per_turn(actual, preds)
+    assert per_turn.shape == (2,)
+    assert per_turn.mean() == pytest.approx(score(actual, *zip(*preds, strict=True)).pinball)
 
 
 def test_backtest_needs_enough_turns(synthetic_turns):
@@ -101,7 +105,7 @@ def test_cli_eval_with_too_little_history(home, logs_dir):
 def test_cli_eval_synthetic_outputs(home):
     data = json.loads(runner.invoke(app, ["eval", "--synthetic", "40", "--json"]).output)
     assert data["data"] == "synthetic"
-    assert [m["name"] for m in data["methods"]][-1] == "tokcast baseline"
+    assert "tokcast baseline" in [m["name"] for m in data["methods"]]
     md = runner.invoke(app, ["eval", "--synthetic", "40", "--markdown"]).output
     assert "| **tokcast baseline** |" in md
     table = runner.invoke(app, ["eval", "--synthetic", "40"], env={"COLUMNS": "100"}).output

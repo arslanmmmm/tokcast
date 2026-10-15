@@ -58,3 +58,27 @@ def pinball_loss(actual, predictions, quantiles=QUANTILES) -> float:
         diff = y - np.asarray(pred, dtype=float)
         losses.append(np.maximum(q * diff, (q - 1) * diff).mean())
     return float(np.mean(losses))
+
+
+def pinball_per_turn(actual, predictions) -> np.ndarray:
+    """Pinball loss of each turn (averaged over P10/P50/P90), on a log scale.
+
+    ``predictions`` has one row per turn and the columns low, median, high."""
+    y = np.log(np.maximum(np.asarray(actual, dtype=float), 1.0))
+    p = np.log(np.maximum(np.asarray(predictions, dtype=float), 1.0))
+    q = np.asarray(QUANTILES)
+    diff = y[:, None] - p
+    return np.maximum(q * diff, (q - 1) * diff).mean(axis=1)
+
+
+def paired_difference(a, b) -> tuple[float, float, float]:
+    """Mean of (a - b) over the same turns, with a 95% interval (normal approximation).
+
+    Comparing two methods on the *same* turns cancels out how hard each turn is, so
+    this detects much smaller real differences than comparing two averages would.
+    Turns of one session aren't fully independent, so read the interval as optimistic.
+    """
+    d = np.asarray(a, dtype=float) - np.asarray(b, dtype=float)
+    mean = float(d.mean())
+    half = float(1.96 * d.std(ddof=1) / np.sqrt(len(d))) if len(d) > 1 else float("inf")
+    return mean, mean - half, mean + half

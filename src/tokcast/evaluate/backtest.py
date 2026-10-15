@@ -15,11 +15,12 @@ from itertools import pairwise
 import numpy as np
 import pandas as pd
 
-from tokcast.evaluate.metrics import Scores, score
+from tokcast.evaluate.metrics import Scores, paired_difference, pinball_per_turn, score
 from tokcast.evaluate.reference import all_methods
 from tokcast.predict import Predictor, Query
 
 MIN_TURNS = 30  # below this, a backtest says more about noise than about the model
+BASELINE = "tokcast baseline"
 
 
 @dataclass
@@ -27,6 +28,9 @@ class MethodResult:
     name: str
     total: Scores
     output: Scores
+    # Pinball loss minus the baseline's on the same turns (tokens processed): mean and 95%
+    # interval. Negative = better than the baseline. None for the baseline itself.
+    vs_baseline: tuple[float, float, float] | None = None
 
 
 @dataclass
@@ -85,19 +89,23 @@ def backtest(
     turns = turns[turns["ts"].notna()].sort_values(["ts", "turn_id"]).reset_index(drop=True)
     if len(turns) < MIN_TURNS:
         raise ValueError(f"only {len(turns)} usable turns; a backtest needs at least {MIN_TURNS}")
-    factories = methods or [type(m) for m in all_methods()]
+    factories = methods or all_methods()
     splits = walk_forward_splits(turns, folds, test_fraction)
     test = pd.concat([t for _, t in splits])
 
-    results = []
+    results: list[MethodResult] = []
+    losses: dict[str, np.ndarray] = {}
     for make in factories:
         total, output = [], []
         for train, chunk in splits:
             model = make().fit(train)  # a fresh model per fold: no state leaks across folds
-            for est in map(model.predict, queries_for(chunk)):
+            queries = queries_for(chunk)
+            many = getattr(model, "predict_many", None)  # optional faster batch path
+            for est in many(queries) if many else map(model.predict, queries):
                 total.append((est.total.low, est.total.median, est.total.high))
                 output.append((est.output.low, est.output.median, est.output.high))
         t, o = np.array(total), np.array(output)
+        losses[make.name] = pinball_per_turn(test["total_tokens"], t)
         results.append(
             MethodResult(
                 name=make.name,
@@ -105,6 +113,10 @@ def backtest(
                 output=score(test["output_tokens"], o[:, 0], o[:, 1], o[:, 2]),
             )
         )
+    if BASELINE in losses:
+        for r in results:
+            if r.name != BASELINE:
+                r.vs_baseline = paired_difference(losses[r.name], losses[BASELINE])
     return BacktestResult(
         data=data,
         n_turns=len(turns),

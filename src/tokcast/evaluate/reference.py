@@ -96,5 +96,37 @@ class Baseline(BaselinePredictor):
     name = "tokcast baseline"
 
 
+class LinearQR:
+    name = "quantile regression (linear)"
+
+    def __new__(cls):
+        from tokcast.predict.qreg import QuantileRegressionPredictor
+
+        return QuantileRegressionPredictor("linear")
+
+
+class BoostedQR:
+    name = "quantile regression (boosted)"
+
+    def __new__(cls):
+        from tokcast.predict.qreg import QuantileRegressionPredictor
+
+        return QuantileRegressionPredictor("boosted")
+
+
+def ml_available() -> bool:
+    """scikit-learn is an optional extra: `pip install tokcast[ml]`."""
+    try:
+        import sklearn  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def all_methods() -> list:
-    return [GlobalMedian(), SingleCall(), ContextRereads(), PriorsOnly(), Baseline()]
+    """Factories for every method to compare (the regression only if sklearn is installed).
+
+    BoostedQR is left out by default: in the Milestone 6 comparison it was no more accurate
+    than the linear version, under-covered (75% in an 80% range) and 4x slower to fit."""
+    methods = [GlobalMedian, SingleCall, ContextRereads, PriorsOnly, Baseline]
+    return methods + ([LinearQR] if ml_available() else [])
