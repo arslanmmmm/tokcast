@@ -5,7 +5,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Bubble } from '../types'
-import { predictArgs } from './args'
+import { predictArgs, statuslinePayload, usedNow } from './args'
+import type { RateLimit } from './args'
 import { firstLine, parse } from './bubble'
 
 const bubble = atom({ plugin: 'tokcast-buddy', key: 'bubble' } as const, {
@@ -21,8 +22,43 @@ const FACES: Record<Bubble['kind'], string> = {
   error: '(•︵•)',
 }
 
+type Config = { command: string[]; home: string; autoIngest: boolean }
+
+// DuckDB allows one writing process at a time, so this mod's tokcast calls run
+// one after another, never side by side.
+let queue: Promise<unknown> = Promise.resolve()
+
+// Runs one tokcast command (e.g. ['predict', ...]) after the ones already queued.
+async function runTokcast($: EngineInterface, cfg: Config, args: string[], stdin: string) {
+  const run = queue.then(() =>
+    $.process.run([...cfg.command, ...args], {
+      stdin,
+      env: cfg.home ? { TOKCAST_HOME: cfg.home } : undefined,
+      timeoutMs: 60_000,
+    }),
+  )
+  queue = run.catch(() => undefined)
+  return run
+}
+
+// Saves the live 5h and weekly readings, so tokcast can learn tokens -> % of limit.
+async function recordReadings($: EngineInterface, cfg: Config, limits: readonly RateLimit[]) {
+  if (limits.length === 0) return // an API-key session has no usage windows
+  const payload = statuslinePayload(limits, await $.session.id())
+  if (payload) await runTokcast($, cfg, ['statusline'], payload)
+}
+
+// After a turn: save a reading, then ingest the new logs so the next estimate
+// and the calibration both include that turn. A separate TOKCAST_HOME (e.g. the
+// synthetic demo) is never fed the real logs.
+async function refresh($: EngineInterface, cfg: Config): Promise<void> {
+  const { rateLimits } = await $.session.usage()
+  await recordReadings($, cfg, rateLimits)
+  if (cfg.autoIngest && !cfg.home) await runTokcast($, cfg, ['ingest'], '')
+}
+
 // Runs tokcast on the draft and puts the result in the bubble.
-async function estimate($: EngineInterface, command: string[], home: string): Promise<void> {
+async function estimate($: EngineInterface, cfg: Config): Promise<void> {
   const { text } = await $.prompt.read()
   if (text.trim() === '') {
     await update($, bubble, (): Bubble => ({ kind: 'error', lines: ['Type a prompt first, then ask me.'] }))
@@ -30,30 +66,27 @@ async function estimate($: EngineInterface, command: string[], home: string): Pr
   }
 
   await update($, bubble, (): Bubble => ({ kind: 'thinking' }))
-  const { context } = await $.session.usage()
-  const argv = predictArgs(command, {
+  const { context, rateLimits } = await $.session.usage()
+  const argv = predictArgs([], {
     contextTokens: context.tokens,
     model: await $.session.model(),
     effort: (await read($, effort)) || undefined,
   })
   let next: Bubble
   try {
-    const result = await $.process.run(argv, {
-      stdin: text,
-      env: home ? { TOKCAST_HOME: home } : undefined,
-      timeoutMs: 20_000,
-    })
+    await recordReadings($, cfg, rateLimits)
+    const result = await runTokcast($, cfg, argv, text)
     if (result.exitCode !== 0) {
       next = { kind: 'error', lines: [`tokcast failed: ${firstLine(result.stderr || result.stdout)}`] }
     } else {
-      const { lines, ok } = parse(result.stdout)
+      const { lines, ok } = parse(result.stdout, usedNow(rateLimits))
       next = { kind: ok ? 'answer' : 'error', lines }
     }
   } catch {
     next = {
       kind: 'error',
       lines: [
-        `Couldn't run "${command.join(' ')}".`,
+        `Couldn't run "${cfg.command.join(' ')}".`,
         'Install tokcast (uv tool install tokcast) or set this mod\'s "command" option.',
       ],
     }
@@ -62,8 +95,21 @@ async function estimate($: EngineInterface, command: string[], home: string): Pr
 }
 
 export const register: Register = (on, options) => {
-  const command = String(options.command ?? 'tokcast').split(/\s+/).filter(Boolean)
-  const home = String(options.tokcastHome ?? '')
+  const cfg: Config = {
+    command: String(options.command ?? 'tokcast').split(/\s+/).filter(Boolean),
+    home: String(options.tokcastHome ?? ''),
+    autoIngest: options.autoIngest !== false,
+  }
+
+  // Readings and logs change after every turn. The work runs on a timer, outside
+  // this hook's dispatch, so it never delays the turn's end.
+  on('turn.complete', async ($, e, next) => {
+    const result = await next(e)
+    $.clock.after(0, () => {
+      refresh($, cfg).catch(() => undefined)
+    })
+    return result
+  })
 
   // Effort isn't on $.session, so remember it from the main loop's requests.
   // turn.step streams the model's reply: pass every chunk through untouched.
@@ -86,7 +132,9 @@ export const register: Register = (on, options) => {
       return next(e)
     }
 
-    const state = await read($, bubble)
+    // State outlives a reload; a shape from another version must not break the band.
+    const saved = await read($, bubble)
+    const state: Bubble = saved && saved.kind in FACES ? saved : { kind: 'idle' }
     const { Box, Button, Text } = $.ui.resolve(e)
     const isBusy = state.kind === 'thinking'
 
@@ -99,7 +147,7 @@ export const register: Register = (on, options) => {
           <Button
             key="estimate"
             label={isBusy ? 'Thinking...' : 'How much will this cost?'}
-            onPress={() => (isBusy ? undefined : estimate($, command, home))}
+            onPress={() => (isBusy ? undefined : estimate($, cfg))}
           />
           {state.kind === 'answer' || state.kind === 'error' ? (
             <Button
@@ -109,7 +157,7 @@ export const register: Register = (on, options) => {
             />
           ) : null}
         </Box>
-        {state.kind === 'answer' || state.kind === 'error'
+        {(state.kind === 'answer' || state.kind === 'error') && Array.isArray(state.lines)
           ? state.lines.map((line, i) => (
               <Text dimColor={i > 0} color={state.kind === 'error' ? 'red' : undefined}>
                 {'  '}

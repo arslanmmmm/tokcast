@@ -18,6 +18,12 @@
       "title": "TOKCAST_HOME",
       "description": "Optional database folder (e.g. a synthetic demo). Empty: tokcast's default.",
       "default": ""
+    },
+    "autoIngest": {
+      "type": "boolean",
+      "title": "Ingest after each turn",
+      "description": "After each turn, save the 5h/weekly usage reading and run tokcast ingest, so estimates and the % of limit stay current. Off: run tokcast ingest yourself.",
+      "default": true
     }
   }
 }

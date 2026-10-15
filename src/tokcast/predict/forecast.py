@@ -51,6 +51,9 @@ class Forecast:
     limit_window: str | None = None  # "5h" when estimates carry limit_pct
     limit_readings: int = 0  # calibration readings so far
     limit_now: Reading | None = None  # latest usage reading, if the window is still open
+    # % of the 7-day limit for the requested option (low, median, high), once calibrated
+    weekly_pct: tuple[float, float, float] | None = None
+    weekly_readings: int = 0  # 7-day calibration readings so far
 
 
 def options_to_compare(model: str, effort: str) -> list[tuple[str, str]]:
@@ -77,6 +80,7 @@ def forecast(
     predictor: Predictor | None = None,
     calibration: Calibration | None = None,
     reading: Reading | None = None,
+    weekly: Calibration | None = None,
 ) -> Forecast:
     classification = classify(prompt)
     predictor = (predictor or BaselinePredictor()).fit(turns)
@@ -115,7 +119,14 @@ def forecast(
             r = est.total
             est.limit_pct = tuple(calibration.pct_of_limit(v) for v in (r.low, r.median, r.high))
 
+    weekly_pct = None
+    if weekly is not None and weekly.ready:
+        r = estimates[0].total
+        weekly_pct = tuple(weekly.pct_of_limit(v) for v in (r.low, r.median, r.high))
+
     return Forecast(
+        weekly_pct=weekly_pct,
+        weekly_readings=len(weekly.points) if weekly is not None else 0,
         limit_window=calibration.window if calibration is not None else None,
         limit_readings=len(calibration.points) if calibration is not None else 0,
         limit_now=reading,

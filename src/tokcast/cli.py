@@ -190,7 +190,8 @@ def predict(
         console.print("[red]Use either --context or --continue, not both.[/]")
         raise typer.Exit(1)
 
-    turns, conversation, fresh, fresh_n, calibration, reading = None, None, None, 0, None, None
+    turns, conversation, fresh, fresh_n = None, None, None, 0
+    calibration, weekly, reading = None, None, None
     if config.db_path().exists():
         with db.connect(config.db_path()) as con:
             turns = load_turns(con)
@@ -198,6 +199,7 @@ def predict(
             fresh, fresh_n = new_chat_context(con)
             cal.load_file(con, config.data_dir())  # pick up the latest status-line readings
             calibration = cal.fit(con, "5h")
+            weekly = cal.fit(con, "7d")
             reading = cal.latest_reading(con, "5h", cal.utcnow())
     if turns is None:
         turns = pd.DataFrame()  # no history: predictions fall back to assumptions
@@ -237,6 +239,7 @@ def predict(
         predictor=predictor,
         calibration=calibration,
         reading=reading,
+        weekly=weekly,
     )
     if as_json:
         print(json.dumps(asdict(result), default=str, indent=2))

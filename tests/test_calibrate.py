@@ -162,6 +162,28 @@ def test_forecast_shows_limit_pct_once_calibrated(loaded):
     )
 
 
+WEEK_RESETS = datetime(2026, 10, 5, 9, 0)  # a 7-day window that contains session s1
+
+
+def weekly_reading(pct, minute):
+    return cal.Snapshot("7d", WEEK_RESETS, pct, datetime(2026, 10, 1, 10, minute, 30), "manual")
+
+
+def test_forecast_shows_weekly_pct_once_calibrated(loaded):
+    for pct in (3.0, 4.0, 5.0):
+        cal.save(loaded, [weekly_reading(pct, 5)])
+    weekly = cal.fit(loaded, "7d")
+    assert weekly.ready
+    assert weekly.k == pytest.approx(4.0 / (S1_WEIGHTED / 1e6))  # same tokens, 7d readings
+
+    f = forecast(pd.DataFrame(), "fix it", model="opus", effort="medium", weekly=weekly)
+    low, med, high = f.weekly_pct
+    assert low < med < high
+    assert med == pytest.approx(weekly.pct_of_limit(f.estimates[0].total.median))
+    assert f.weekly_readings == 3
+    assert f.estimates[0].limit_pct is None  # the 5h window has no readings
+
+
 # -- CLI ---------------------------------------------------------------------------------
 
 
@@ -209,3 +231,4 @@ def test_cli_predict_shows_limit_after_three_readings(home, logs_dir):
     data = json.loads(runner.invoke(app, ["predict", "fix the bug", "--json"]).output)
     assert data["limit_window"] == "5h" and data["limit_readings"] == 3
     assert data["estimates"][0]["limit_pct"] is not None
+    assert (data["weekly_pct"], data["weekly_readings"]) == (None, 0)  # no 7d readings yet

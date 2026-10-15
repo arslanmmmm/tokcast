@@ -257,6 +257,9 @@ def _limit_notes(f: Forecast, console: Console, show_limit: bool) -> None:
                 )
             )
         return
+    if f.weekly_pct:
+        weekly = _pct_range(f.weekly_pct)
+        console.print(f"Weekly: this turn would use {weekly} of your 7-day limit.")
     now, mine = f.limit_now, f.estimates[0].limit_pct
     if now is None or mine is None:
         return

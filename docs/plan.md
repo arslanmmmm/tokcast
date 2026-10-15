@@ -2,7 +2,7 @@
 
 **Status (2026-10-15): v0.1 complete; milestone 9 (Claude Code mod) in progress.** All
 eight v0.1 milestones are done, plus one fix found while demoing on real data; 134 Python
-tests pass and CI is green. Milestone 9 adds a mod for Claude Code (18 tests of its own).
+tests pass and CI is green. Milestone 9 adds a mod for Claude Code (27 tests of its own).
 This file records what was built, the decisions behind it, and what's next.
 
 ## Milestones
@@ -23,7 +23,8 @@ This file records what was built, the decisions behind it, and what's next.
 | — | Fix: strip `<pasted_content>` wrapper tags from prompts (found on real data) | ✅ | `a45b2b6` |
 | 9a | Claude Code mod: a character above the prompt that predicts the draft on click | ✅ | `2215b65` |
 | 9b | Mod passes the live context size, model and effort | ✅ | after `2215b65` |
-| 9c | Mod: README section, demo | ⏳ | |
+| 9c | 5h and weekly %: live usage, readings collected by the mod, weekly calibration | ✅ | after `74621f1` |
+| 9d | Mod: README section, demo | ⏳ | |
 
 ## Key decisions
 
@@ -132,6 +133,18 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
 26. **Pure modules for logic** (`args.ts`, `bubble.ts`) and engine test-kit tests for the
     band on both surfaces, with the prompt box, session and process stubbed. The mod's
     tests need the Claude Code binary, so they don't run in CI yet.
+27. **"% used now" from Claude Code, "+x% for this turn" from tokcast.** The live 5h and
+    7-day windows come from `$.session.usage().rateLimits`; no calibration needed. The
+    turn's share still needs the learned tokens → % mapping, now fitted for `7d` too
+    (`weekly_pct` in the forecast). Claude has no daily limit, so "daily" means the 5h
+    window.
+28. **The mod collects calibration readings itself** by passing the live windows to
+    `tokcast statusline` after each turn (reusing its tested parsing, no new format),
+    then running `tokcast ingest`, since a reading only counts once its tokens are in the
+    database. Ingest is ~2 s incremental, runs on a timer outside the turn, and the mod
+    queues its tokcast calls because DuckDB allows one writer. A separate `TOKCAST_HOME`
+    is never auto-ingested (it would mix real logs into synthetic data); `autoIngest`
+    turns it off.
 
 ## Findings from the author's real logs
 
@@ -153,6 +166,13 @@ medium effort.
 - Real data found three things the synthetic data couldn't: injected `<system-reminder>`
   blocks, `<pasted_content>` wrapper tags, and conversations growing past 400k tokens.
 
+### First real check of the mod (2026-10-15)
+
+The draft "go for next milestone" was estimated by 9a at ~2.9M tokens (364k–7.4M); the
+turn used 3.6M. Inside the range, median 20% low. 9a assumed a new chat (63k context) while
+the conversation was at 146k: the gap 9b closes. One turn is an anecdote, not evidence;
+`tokcast eval` remains the test.
+
 ## Next steps
 
 - [ ] Record the demo GIF (`vhs docs/demo.tape`) and add it to the README.
@@ -162,7 +182,9 @@ medium effort.
 - [ ] Verify the subagent layout on real subagent logs.
 - [ ] Fit calibration weights per token type once there are many readings.
 - [ ] Publish to PyPI so `uvx tokcast` works directly.
-- [ ] Milestone 9c: README section for the mod and a demo (synthetic data).
+- [ ] Milestone 9d: README section for the mod and a demo (synthetic data).
+- [ ] Check the weekly calibration once real 7d readings exist: one reading per turn moves
+  slowly, and readings under 2% are skipped.
 - [ ] Run the mod's tests in CI once the Claude Code binary can be installed there.
 - [ ] Roadmap:
   - v2: claude.ai browser extension using `predict --json`

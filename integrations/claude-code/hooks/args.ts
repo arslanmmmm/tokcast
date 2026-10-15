@@ -25,3 +25,28 @@ export function predictArgs(command: readonly string[], facts: SessionFacts): st
 
   return argv
 }
+
+// A usage-limit window as $.session.usage() reports it.
+export type RateLimit = { kind: string; percentUsed: number; resetsAt?: string }
+
+const WINDOWS = new Set(['five_hour', 'seven_day'])
+
+// The live readings in the shape of Claude Code's status-line JSON, so
+// `tokcast statusline` records them with its existing, tested code.
+// Null when there is nothing to record (an API-key session has no windows).
+export function statuslinePayload(limits: readonly RateLimit[], sessionId: string): string | null {
+  const rate_limits: Record<string, { used_percentage: number; resets_at: number }> = {}
+  for (const l of limits) {
+    const resets = l.resetsAt ? Date.parse(l.resetsAt) : Number.NaN
+    if (WINDOWS.has(l.kind) && !Number.isNaN(resets)) {
+      rate_limits[l.kind] = { used_percentage: l.percentUsed, resets_at: Math.floor(resets / 1000) }
+    }
+  }
+  return Object.keys(rate_limits).length ? JSON.stringify({ session_id: sessionId, rate_limits }) : null
+}
+
+// The % used right now per window, for the bubble.
+export function usedNow(limits: readonly RateLimit[]): { fiveHour?: number; sevenDay?: number } {
+  const find = (kind: string) => limits.find(l => l.kind === kind)?.percentUsed
+  return { fiveHour: find('five_hour'), sevenDay: find('seven_day') }
+}

@@ -17,7 +17,12 @@ export type Forecast = {
   new_chat: Estimate | null // set when a fresh chat would be clearly cheaper
   limit_window: string | null
   limit_readings: number
+  weekly_pct?: [number, number, number] | null // absent from tokcast before 0.2
+  weekly_readings?: number
 }
+
+// The % of each window already used, as Claude Code reports it live.
+export type UsedNow = { fiveHour?: number; sevenDay?: number }
 
 // Calibration needs this many status-line readings (decision 19 in docs/plan.md).
 const READINGS_NEEDED = 3
@@ -32,6 +37,21 @@ function pct(p: number): string {
   return p < 1 ? `${p.toFixed(1)}%` : `${Math.round(p)}%`
 }
 
+// One line per window: how much is used now (when known), and what this turn
+// would add once tokcast has learned the mapping from enough readings.
+function limitLine(
+  label: string,
+  now: number | undefined,
+  turn: [number, number, number] | null,
+  readings: number,
+): string {
+  const used = now === undefined ? '' : `${pct(now)} used now`
+  const adds = turn
+    ? `this turn ≈ +${pct(turn[1])} (${pct(turn[0])}–${pct(turn[2])})`
+    : `this turn: learning your limit (${readings}/${READINGS_NEEDED} readings)`
+  return `${label}: ${used ? `${used} → ` : ''}${adds}`
+}
+
 // Where the context size came from, in words for the bubble.
 function contextLine(f: Forecast): string {
   return f.context.mode === 'given'
@@ -39,19 +59,17 @@ function contextLine(f: Forecast): string {
     : `new chat: ${f.context.note}`
 }
 
-// Three or four short lines: the cost, the % of the limit, the basis, and a
-// hint when starting a new chat would be clearly cheaper.
-export function summarize(f: Forecast): string[] {
+// Four or five short lines: the cost, the 5h and weekly limits, the basis, and
+// a hint when starting a new chat would be clearly cheaper.
+export function summarize(f: Forecast, now: UsedNow = {}): string[] {
   const e = f.estimates[0]
   if (!e) return ['tokcast returned no estimate.']
 
   const { low, median, high } = e.total
   const cost = `~${tokens(median)} tokens (${tokens(low)}–${tokens(high)}) for a ${f.classification.task_type} turn`
 
-  const window = f.limit_window ?? '5h'
-  const limit = e.limit_pct
-    ? `≈ ${pct(e.limit_pct[1])} of your ${window} limit (${pct(e.limit_pct[0])}–${pct(e.limit_pct[2])})`
-    : `% of ${window} limit: not calibrated yet (${f.limit_readings}/${READINGS_NEEDED} status-line readings)`
+  const fiveHour = limitLine('5h limit', now.fiveHour, e.limit_pct, f.limit_readings)
+  const weekly = limitLine('weekly limit', now.sevenDay, f.weekly_pct ?? null, f.weekly_readings ?? 0)
 
   // Every estimate states its basis; with no history it is an assumption.
   const basis =
@@ -59,7 +77,7 @@ export function summarize(f: Forecast): string[] {
       ? 'basis: built-in assumption (no history yet: run tokcast ingest)'
       : `basis: ${e.n} of your ${e.group}`
 
-  const lines = [cost, limit, `${basis} · ${contextLine(f)}`]
+  const lines = [cost, fiveHour, weekly, `${basis} · ${contextLine(f)}`]
   if (f.new_chat) {
     lines.push(`tip: in a new chat this would be ~${tokens(f.new_chat.total.median)} tokens`)
   }
@@ -67,9 +85,9 @@ export function summarize(f: Forecast): string[] {
 }
 
 // Parses stdout; a problem becomes a readable message instead of a crash.
-export function parse(stdout: string): { lines: string[]; ok: boolean } {
+export function parse(stdout: string, now: UsedNow = {}): { lines: string[]; ok: boolean } {
   try {
-    return { lines: summarize(JSON.parse(stdout) as Forecast), ok: true }
+    return { lines: summarize(JSON.parse(stdout) as Forecast, now), ok: true }
   } catch {
     return { lines: ["Couldn't read tokcast's output."], ok: false }
   }

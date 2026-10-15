@@ -7,7 +7,8 @@ estimates before you send it:
 ```
 (•o•) [ How much will this cost? ] [ × ]
   ~552k tokens (183k–2.5M) for a bugfix turn
-  % of 5h limit: not calibrated yet (0/3 status-line readings)
+  5h limit: 24% used now → this turn ≈ +3% (1%–9%)
+  weekly limit: 41% used now → this turn: learning your limit (1/3 readings)
   basis: 518 of your bugfix turns · new chat: median of your 200 first turns
 ```
 
@@ -31,6 +32,15 @@ estimates before you send it:
   | `--effort` | the last main-loop `turn.step` (the only event that carries it) | before the first turn: tokcast's default |
 
   When a new chat would be clearly cheaper, the bubble adds a tip with that estimate.
+- **Usage limits.** "% used now" comes straight from Claude Code (`rateLimits`: the 5-hour
+  and 7-day windows; there is no daily limit). What *this turn* would add needs tokcast's
+  calibration (tokens → % of limit), learned from readings. The mod collects them itself:
+  after every turn it passes the live windows to `tokcast statusline` (the same code the
+  status line uses), then runs `tokcast ingest` so the turn's tokens are in the database.
+  After 3 usable readings per window the "+x%" appears. A reading is usable once it's at
+  least 2% and its logs are ingested.
+- tokcast calls run one at a time (DuckDB allows one writer), and the after-turn work runs
+  on a timer so it never delays the turn.
 
 ## Try it
 
@@ -42,13 +52,14 @@ The mod has two options (`/config`, or `pluginConfigs` in settings):
 | option | default | use |
 |---|---|---|
 | `command` | `tokcast` | how to run tokcast, e.g. `uv run --project /path/to/tokcast tokcast` |
-| `tokcastHome` | empty | a separate database, e.g. the synthetic demo's `tokcast-demo/db` |
+| `tokcastHome` | empty | a separate database, e.g. the synthetic demo's `tokcast-demo/db` (never auto-ingested) |
+| `autoIngest` | on | after each turn, save the usage reading and run `tokcast ingest` |
 
 ## Develop
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 18 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 27 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 
