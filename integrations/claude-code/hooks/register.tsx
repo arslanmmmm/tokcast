@@ -8,8 +8,8 @@ import type { Bubble } from '../types'
 import { predictArgs, statuslinePayload, usedNow } from './args'
 import type { RateLimit } from './args'
 import { firstLine, parse } from './bubble'
-import { HELP, VIEW_MESSAGES, isView, parseCommand } from './command'
-import type { View } from './command'
+import { isView } from './view'
+import type { View } from './view'
 
 const bubble = atom({ plugin: 'tokcast-buddy', key: 'bubble' } as const, {
   kind: 'idle',
@@ -114,27 +114,11 @@ export const register: Register = (on, options) => {
     autoIngest: options.autoIngest !== false,
   }
 
-  // Register /tokcast and restore the last show/hide choice.
+  // Restore the last show/hide choice.
   on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'tokcast',
-      description: 'Estimate a prompt, or show / hide / turn off the tokcast character',
-    })
     const saved = await $.store.get(VIEW_KEY)
     if (isView(saved)) await update($, view, () => saved)
     return next(e)
-  })
-
-  // Answered here, never sent to the model, so it costs no tokens.
-  on('command.run', { command: 'tokcast' }, async ($, e) => {
-    const cmd = parseCommand(e.args)
-    if (cmd.action === 'help') return { text: HELP }
-    if (cmd.action === 'view') {
-      await setView($, cmd.view)
-      return { text: VIEW_MESSAGES[cmd.view] }
-    }
-    const answer = await forecast($, cfg, cmd.text)
-    return { text: answer.kind === 'answer' || answer.kind === 'error' ? answer.lines.join('\n') : '' }
   })
 
   // Readings and logs change after every turn. The work runs on a timer, outside
@@ -165,9 +149,6 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const mode = await read($, view)
-    if (mode === 'off') {
-      return next(e)
-    }
 
     // State outlives a reload; a shape from another version must not break the band.
     const saved = await read($, bubble)

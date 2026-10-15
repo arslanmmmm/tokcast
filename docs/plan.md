@@ -2,7 +2,7 @@
 
 **Status (2026-10-15): v0.1 complete; milestone 9 (Claude Code mod) complete.** All
 eight v0.1 milestones are done, plus one fix found while demoing on real data; 135 Python
-tests pass and CI is green. Milestone 9 adds a mod for Claude Code (37 tests of its own).
+tests pass and CI is green. Milestone 9 adds a mod for Claude Code (32 tests of its own).
 This file records what was built, the decisions behind it, and what's next.
 
 ## Milestones
@@ -25,7 +25,8 @@ This file records what was built, the decisions behind it, and what's next.
 | 9b | Mod passes the live context size, model and effort | ✅ | after `2215b65` |
 | 9c | 5h and weekly %: live usage, readings collected by the mod, weekly calibration | ✅ | after `74621f1` |
 | 9d | Mod docs: README section, privacy/limitations, calibration doc | ✅ | after `a7c6657` |
-| 9e | Mod shares the band with Claude Code's boxes; hide/show; `/tokcast` command | ✅ | after `2f9e5d8` |
+| 9e | Mod shares the band with Claude Code's boxes; hide/show | ✅ | `f82d119` |
+| 9f | Mod installable (marketplace file); `/tokcast` removed | ✅ | after `f82d119` |
 | 10 | Starting guess for % of limit per plan, refined by readings | ⏳ | |
 
 ## Key decisions
@@ -149,13 +150,21 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
     turns it off.
 29. **Share the band instead of yielding it.** Claude Code draws surveys and question
     boxes in the same band and sets `hasSurvey`; the mod first stepped aside, and the user
-    saw the character "vanish" (a survey was the cause, confirmed from a screenshot). Now
+    saw the character "vanish" (a survey was one cause, confirmed from a screenshot; see 31
+    for the other). Now
     it draws Claude Code's tree first, unchanged, and the character under it. *Rejected:
     drawing over it (it would hide the survey) and yielding (confusing).*
-30. **The user controls visibility:** full / face only / off, kept across sessions in
-    `$.store`, with a hide button and `/tokcast show | hide | off`. `/tokcast <prompt>`
-    answers in the conversation, so an estimate never depends on the band. The command
-    is answered by the mod, so it costs no tokens.
+30. **The user controls visibility with one button:** full character or face only, kept
+    across sessions in `$.store`. A `/tokcast` command (show / hide / off / estimate) was
+    built and then removed at the user's request: they want the button, not commands.
+31. **Install, don't hot-reload.** The character vanished again because the app had
+    restarted the conversation as a new session, and a session's hot-reload mods folder
+    is tied to that session id. A marketplace file at the repo root
+    (`.claude-plugin/marketplace.json`, source `./integrations/claude-code`) makes it a
+    one-time install: `/plugin install tokcast-buddy --marketplace arslanmmmm/tokcast`,
+    or from a local clone, read from the folder itself so edits apply on
+    `/reload-plugins`. tokcast prints the commands; it doesn't change Claude Code's
+    settings itself.
 
 ## Findings from the author's real logs
 

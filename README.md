@@ -123,13 +123,17 @@ before you send:
   the readings for that itself after every turn, so no status-line setup is needed.
 - **It runs tokcast locally** (the draft goes to it on stdin) and only when you click,
   because each run starts Python and DuckDB.
-- **You decide how much it shows:** a **hide** button shrinks it to its face, and
-  `/tokcast show | hide | off` sets it from the prompt. `/tokcast <prompt>` answers in the
-  conversation instead of the band.
+- **You decide how much it shows:** a **hide** button shrinks it to its face; click the
+  face to open it again.
 
 ```bash
-uv tool install --editable .                    # puts `tokcast` on your PATH
-claude --plugin-dir integrations/claude-code    # loads the mod for this session
+uv tool install --editable .     # puts `tokcast` on your PATH
+```
+
+Then install the mod once, at the prompt of a Claude Code terminal session:
+
+```
+/plugin install tokcast-buddy --marketplace arslanmmmm/tokcast
 ```
 
 Options, tests and design notes are in the [mod's README](integrations/claude-code/README.md).
@@ -234,8 +238,7 @@ small real histories yet. So the simpler baseline remains the default.
 - **The mod's "+x% for this turn" needs 3 readings per window,** so a new user sees only
   "% used now" at first. The weekly window moves slowly, so it can take days.
 - **The mod shares the space above the prompt with Claude Code's own boxes** (a survey,
-  a question): it draws under them. `/tokcast hide` shrinks it to its face and
-  `/tokcast off` removes it; `/tokcast <prompt>` estimates without the band at all.
+  a question) and draws under them; its **hide** button shrinks it to its face.
 
 ## Roadmap
 
@@ -280,7 +283,7 @@ uv run pytest                            # 135 tests, about 30 s
 uv run ruff check . && uv run ruff format --check .
 ```
 
-The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 37
+The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 32
 tests). They need the Claude Code binary, so CI doesn't run them yet.
 
 CI runs the Python checks on every push. Fixture logs in `tests/fixtures/` are handwritten, and

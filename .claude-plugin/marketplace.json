@@ -1,0 +1,6 @@
+{
+  "name": "tokcast",
+  "owner": { "name": "Arslan" },
+  "description": "tokcast-buddy: see what a Claude Code prompt will cost before you send it.",
+  "plugins": [{ "name": "tokcast-buddy", "source": "./integrations/claude-code" }]
+}

@@ -27,9 +27,8 @@ estimates before you send it:
   survey, a question) and tells hooks with `hasSurvey`. The mod keeps that drawing whole
   and first, and draws the character under it. (The first version stepped aside, and the
   character seemed to vanish after every turn that ended with such a box.)
-- **You choose how much of it shows,** and the choice is kept across sessions (`$.store`):
-  **hide** shrinks it to its face, clicking the face opens it again, and `/tokcast off`
-  removes it completely.
+- **You choose how much of it shows:** the **hide** button shrinks it to its face, and
+  clicking the face opens it again. The choice is kept across sessions (`$.store`).
 - `hooks/args.ts` passes what the session knows, so follow-ups aren't priced as new chats:
 
   | flag | from | when unknown |
@@ -49,24 +48,30 @@ estimates before you send it:
 - tokcast calls run one at a time (DuckDB allows one writer), and the after-turn work runs
   on a timer so it never delays the turn.
 
-## The `/tokcast` command
-
-Answered by the mod itself, never sent to the model, so it costs no tokens:
-
-| command | does |
-|---|---|
-| `/tokcast <prompt>` | estimates that prompt and answers in the conversation, even when the band is hidden or busy |
-| `/tokcast show` | the full character: face, button and answer |
-| `/tokcast hide` | just the face; click it to open |
-| `/tokcast off` | nothing above the prompt; `/tokcast show` brings it back |
-| `/tokcast` | lists these |
-
-## Try it
+## Install
 
 1. Put `tokcast` on your PATH: `uv tool install --editable .` from the repo root.
-2. Load the mod for one session: `claude --plugin-dir integrations/claude-code`.
+2. Install the mod once, in a terminal (Claude Code 2.1.275 or later):
 
-The mod has two options (`/config`, or `pluginConfigs` in settings):
+   ```
+   /plugin install tokcast-buddy --marketplace arslanmmmm/tokcast
+   ```
+
+   Answer `y` to add the marketplace, then pick the user scope. It then loads in every
+   session, the desktop app's included.
+
+   **From your own clone** (edits apply after `/reload-plugins`, no reinstall):
+
+   ```bash
+   claude plugin marketplace add /path/to/tokcast
+   claude plugin install tokcast-buddy@tokcast
+   ```
+
+For one session only, while developing: `claude --plugin-dir integrations/claude-code`.
+(A session's hot-reload mods folder is tied to that session; when the app restarts the
+conversation as a new session, a mod loaded that way is gone. Installing avoids that.)
+
+The mod has three options (`/config`, or `pluginConfigs` in settings):
 
 | option | default | use |
 |---|---|---|
@@ -78,7 +83,7 @@ The mod has two options (`/config`, or `pluginConfigs` in settings):
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 37 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 32 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 

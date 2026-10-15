@@ -6,8 +6,8 @@ export type Bubble =
   | { kind: 'error'; lines: string[] }
 
 // How the character shows above the prompt: full = face, button and answer;
-// mini = just the face (click to open); off = nothing. See hooks/command.ts.
-export type View = 'full' | 'mini' | 'off'
+// mini = just the face (click it to open). See hooks/view.ts.
+export type View = 'full' | 'mini'
 
 declare module 'claude-code' {
   interface PluginState {

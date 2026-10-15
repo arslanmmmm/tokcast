@@ -231,14 +231,6 @@ function store(on: On, initial: Record<string, unknown> = {}) {
   return saved
 }
 
-// Stands in for Claude Code's own (empty) drawing of the band.
-function nothingBelow(on: On) {
-  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
-    const { Box } = $.ui.resolve(e)
-    return <Box />
-  })
-}
-
 test('hide shrinks it to the face, and the face opens it again', async ($, on) => {
   engine(on, 'hello', OK)
   const saved = store(on)
@@ -255,36 +247,8 @@ test('hide shrinks it to the face, and the face opens it again', async ($, on) =
   expect(saved.get('view')).toBe('full')
 })
 
-// /tokcast is answered by the mod itself; these stand in for the engine's side.
-function commands_(on: On) {
-  on('command.register', (_$, e) => ({ value: { command: e.name } }))
-}
-const run = (args: string) => ({
-  command: 'tokcast',
-  args,
-  origin: { kind: 'composer' as const },
-  presentation: { isFullscreen: false, columns: 80 },
-})
-
-test('/tokcast off hides it completely, and the choice is remembered', async ($, on) => {
-  engine(on, 'hello', OK)
-  commands_(on)
-  nothingBelow(on)
-  const saved = store(on)
-  const ui = await band($)
-
-  expect((await $.command.run(run('off'))).text).toMatch(/hidden/)
-  expect(await ui.find({ key: 'estimate' })).toBeUndefined()
-  expect(await ui.find({ key: 'open' })).toBeUndefined()
-  expect(saved.get('view')).toBe('off')
-
-  await $.command.run(run('show'))
-  expect(await ui.find({ key: 'estimate' })).toBeDefined()
-})
-
 test('a new session starts with the last choice', async ($, on) => {
   engine(on, 'hello', OK)
-  commands_(on)
   store(on, { view: 'mini' })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
 
@@ -295,19 +259,13 @@ test('a new session starts with the last choice', async ($, on) => {
   expect(await ui.find({ key: 'estimate' })).toBeUndefined()
 })
 
-test('/tokcast <prompt> answers in the conversation, even with the band hidden', async ($, on) => {
-  const runs = engine(on, '', OK, { limits: LIMITS })
-  commands_(on)
+test('an unknown saved choice (e.g. the removed "off") falls back to the full character', async ($, on) => {
+  engine(on, 'hello', OK)
   store(on, { view: 'off' })
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
 
-  const { text } = await $.command.run(run('fix the crash in the parser'))
+  await $.session.start({ cwd: '/x', surface: 'desktop', isInteractive: true })
+  const ui = await band($)
 
-  expect(runs.at(-1)?.init?.stdin).toBe('fix the crash in the parser')
-  expect(text).toMatch(/~400k tokens/)
-  expect(text).toMatch(/5h limit: 24% used now/)
-})
-
-test('/tokcast alone explains the options', async ($, on) => {
-  commands_(on)
-  expect((await $.command.run(run(''))).text).toMatch(/\/tokcast hide/)
+  expect(await ui.find({ key: 'estimate' })).toBeDefined()
 })
