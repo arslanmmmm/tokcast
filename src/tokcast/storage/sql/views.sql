@@ -16,6 +16,18 @@ SELECT
     r.input_tokens + r.cache_read_tokens + r.cache_creation_tokens + r.output_tokens
         AS total_tokens,
     regexp_extract(r.model, '(opus|sonnet|haiku|fable)', 1) AS model_family,
+    -- "Cost units": tokens weighted by their API price ratios (input 1, cache write 1.25
+    -- for 5 minutes or 2 for 1 hour, cache read 0.1, output 5). Usage limits are assumed
+    -- to weigh tokens the same way; `tokcast calibrate` learns the scale from real readings.
+    -- Cast to DOUBLE: 1.25 * an integer is an exact DECIMAL in DuckDB, which arrives in
+    -- Python as decimal.Decimal and breaks arithmetic with floats.
+    CAST(r.input_tokens
+        + 1.25 * r.cache_creation_5m_tokens
+        + 2.0 * r.cache_creation_1h_tokens
+        + 1.25 * greatest(r.cache_creation_tokens - r.cache_creation_5m_tokens
+                          - r.cache_creation_1h_tokens, 0)
+        + 0.1 * r.cache_read_tokens
+        + 5.0 * r.output_tokens AS DOUBLE) AS weighted_tokens,
     -- Usage values that can't be right. Some Claude Code versions logged placeholder
     -- or incomplete counts; flagged calls are reported by `stats` and kept out of training.
     CASE
@@ -40,6 +52,7 @@ WITH per_turn AS (
         sum(thinking_tokens)::BIGINT     AS thinking_tokens,
         sum(context_tokens)::BIGINT      AS input_processed_tokens,
         sum(total_tokens)::BIGINT        AS total_tokens,
+        sum(weighted_tokens)             AS weighted_tokens,
         count(*) FILTER (WHERE agent_id IS NOT NULL)                        AS n_subagent_requests,
         count(quality_flag)              AS n_flagged_requests,
         coalesce(sum(total_tokens) FILTER (WHERE agent_id IS NOT NULL), 0)::BIGINT
@@ -77,7 +90,8 @@ SELECT
     coalesce(t.thinking_tokens, 0)         AS thinking_tokens,
     coalesce(t.input_processed_tokens, 0)  AS input_processed_tokens,
     coalesce(t.subagent_tokens, 0)         AS subagent_tokens,
-    coalesce(t.total_tokens, 0)            AS total_tokens
+    coalesce(t.total_tokens, 0)            AS total_tokens,
+    coalesce(t.weighted_tokens, 0)         AS weighted_tokens
 FROM prompts p
 LEFT JOIN per_turn t ON t.turn_id = p.prompt_id
 LEFT JOIN sessions s USING (session_id);

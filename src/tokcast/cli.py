@@ -14,25 +14,21 @@ import sys
 import tempfile
 import time
 from dataclasses import asdict
+from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import pandas as pd
 import typer
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from tokcast import __version__, config, render
-from tokcast.evaluate import backtest
-from tokcast.evaluate.reference import ml_available
-from tokcast.features.build import current_conversation, load_turns, new_chat_context
-from tokcast.ingest import pipeline
-from tokcast.ingest.sources import ClaudeCodeSource
-from tokcast.predict import BaselinePredictor, forecast, priors
-from tokcast.stats import build_report
-from tokcast.storage import db
-from tokcast.synth import generator as synth_gen
+from tokcast import __version__, config
+from tokcast.synth import generator as synth_gen  # standard library only: cheap to import
+
+# Heavy libraries (pandas, DuckDB, pyarrow, numpy) are imported inside the commands that
+# need them. `tokcast statusline` runs after every Claude reply and must start fast; with
+# everything imported up front it took ~1.1 s, almost all of it pandas.
 
 PIP_ML = "pip install 'tokcast[ml]'"
 
@@ -91,12 +87,19 @@ def ingest(
             "database so they don't mix with your real history, e.g.:"
         )
         console.print(
-            f"  TOKCAST_HOME={_demo_home(root)} tokcast ingest --path {root}", soft_wrap=True
+            f"  TOKCAST_HOME={_demo_home(root)} tokcast ingest --path {shlex.quote(str(root))}",
+            soft_wrap=True,
         )
         raise typer.Exit(1)
 
+    from tokcast.calibrate import load_file
+    from tokcast.ingest import pipeline
+    from tokcast.ingest.sources import ClaudeCodeSource
+    from tokcast.storage import db
+
     with db.connect(config.db_path()) as con:
         report = pipeline.ingest(con, ClaudeCodeSource(), root, store_text=not no_text, full=full)
+        readings = load_file(con, config.data_dir())  # captured by `tokcast statusline`
 
     table = Table(title="Ingest summary", show_header=False, box=None)
     table.add_column(no_wrap=True)  # labels stay on one line in narrow terminals
@@ -108,6 +111,8 @@ def ingest(
     table.add_row("API requests", f"{report.requests_after}  [green](+{report.new_requests})[/]")
     if report.errors:
         table.add_row("Malformed lines", f"[yellow]{report.errors}[/] (skipped, see ingest_errors)")
+    if readings:
+        table.add_row("Usage-limit readings", str(readings))
     console.print(table)
     # soft_wrap: let the terminal wrap long paths itself instead of Rich splitting them.
     console.print(f"[dim]Database: {config.db_path()}[/]", soft_wrap=True)
@@ -123,6 +128,10 @@ def stats(
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
 ) -> None:
     """Summarize your history: tokens by model, day and project, and what drives cost."""
+    from tokcast import render
+    from tokcast.stats import build_report
+    from tokcast.storage import db
+
     if not config.db_path().exists():
         console.print("No data yet. Run [bold]tokcast ingest[/] first.")
         raise typer.Exit(1)
@@ -166,6 +175,14 @@ def predict(
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
 ) -> None:
     """Estimate how many tokens a prompt will use, before you send it."""
+    import pandas as pd
+
+    from tokcast import calibrate as cal
+    from tokcast import render
+    from tokcast.features.build import current_conversation, load_turns, new_chat_context
+    from tokcast.predict import forecast, priors
+    from tokcast.storage import db
+
     predictor = _predictor(method)
     if prompt == "-":
         prompt = sys.stdin.read()
@@ -173,12 +190,15 @@ def predict(
         console.print("[red]Use either --context or --continue, not both.[/]")
         raise typer.Exit(1)
 
-    turns, conversation, fresh, fresh_n = None, None, None, 0
+    turns, conversation, fresh, fresh_n, calibration, reading = None, None, None, 0, None, None
     if config.db_path().exists():
         with db.connect(config.db_path()) as con:
             turns = load_turns(con)
             conversation = current_conversation(con)
             fresh, fresh_n = new_chat_context(con)
+            cal.load_file(con, config.data_dir())  # pick up the latest status-line readings
+            calibration = cal.fit(con, "5h")
+            reading = cal.latest_reading(con, "5h", cal.utcnow())
     if turns is None:
         turns = pd.DataFrame()  # no history: predictions fall back to assumptions
 
@@ -215,6 +235,8 @@ def predict(
         new_chat_tokens=fresh or None,
         compare=compare,
         predictor=predictor,
+        calibration=calibration,
+        reading=reading,
     )
     if as_json:
         print(json.dumps(asdict(result), default=str, indent=2))
@@ -223,6 +245,9 @@ def predict(
 
 
 def _predictor(method: str):
+    from tokcast.evaluate.reference import ml_available
+    from tokcast.predict import BaselinePredictor
+
     if method == "baseline":
         return BaselinePredictor()
     if method == "qreg":
@@ -239,11 +264,23 @@ def _predictor(method: str):
 
 def _model_family(name: str) -> str:
     """'opus', 'Opus' or 'claude-opus-5-5' -> 'opus'."""
+    from tokcast.predict import priors
+
     match = re.search(r"opus|sonnet|haiku|fable", name.lower())
     if not match:
         console.print(f"[red]Unknown model:[/] {name} (use {', '.join(priors.MODELS)})")
         raise typer.Exit(1)
     return match.group(0)
+
+
+def _parse_duration(text: str) -> timedelta:
+    """'2h10m' -> 2 hours 10 minutes. Days, hours and minutes, in that order."""
+    match = re.fullmatch(r"\s*(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*", text.lower())
+    if not match or not any(match.groups()):
+        console.print(f"[red]Can't read duration:[/] {text} (try 2h10m or 3d4h)")
+        raise typer.Exit(1)
+    days, hours, minutes = (int(g or 0) for g in match.groups())
+    return timedelta(days=days, hours=hours, minutes=minutes)
 
 
 def _parse_tokens(text: str) -> float:
@@ -269,6 +306,13 @@ def eval_(
     markdown: bool = typer.Option(False, "--markdown", help="Print a Markdown table."),
 ) -> None:
     """Backtest the predictor on past turns: how often were the ranges right?"""
+    from tokcast import render
+    from tokcast.evaluate import backtest
+    from tokcast.features.build import load_turns
+    from tokcast.ingest import pipeline
+    from tokcast.ingest.sources import ClaudeCodeSource
+    from tokcast.storage import db
+
     if synthetic:
         with tempfile.TemporaryDirectory() as tmp:
             synth_gen.generate(Path(tmp), sessions=synthetic, seed=seed)
@@ -297,6 +341,77 @@ def eval_(
         print(render.backtest_markdown(result))
     else:
         render.render_backtest(result, console)
+
+
+@app.command()
+def calibrate(
+    used: float | None = typer.Option(
+        None, "--used", min=0, max=100, help="Usage percent Claude shows right now, e.g. 23."
+    ),
+    window: str = typer.Option("5h", "--window", help="Which limit: 5h or 7d."),
+    resets_in: str | None = typer.Option(
+        None, "--resets-in", help="Time until the window resets, as Claude shows it: 2h10m."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    """Teach tokcast your tokens -> "% of usage limit" mapping (estimates, clearly labelled)."""
+    from tokcast import calibrate as cal
+    from tokcast import render
+    from tokcast.calibrate.mapping import WINDOW_LENGTH
+    from tokcast.ingest import pipeline
+    from tokcast.ingest.sources import ClaudeCodeSource
+    from tokcast.storage import db
+
+    if window not in WINDOW_LENGTH:
+        console.print("[red]--window must be 5h or 7d[/]")
+        raise typer.Exit(1)
+    with db.connect(config.db_path()) as con:
+        # Token counts must be current for the reading to be matched against them.
+        logs = config.claude_logs_dir()
+        if logs.is_dir() and not synth_gen.is_synthetic(logs):
+            pipeline.ingest(con, ClaudeCodeSource(), logs)
+        cal.load_file(con, config.data_dir())
+
+        if used is not None:
+            now = cal.utcnow()
+            if resets_in:
+                resets_at = now + _parse_duration(resets_in)
+            elif window == "5h":
+                resets_at = cal.infer_window_end(con, now)
+            else:
+                resets_at = None
+            if resets_at is None:
+                console.print(
+                    "[red]Can't tell when this window started.[/] Add --resets-in "
+                    "(Claude's usage screen shows it, e.g. --resets-in 2h10m)."
+                )
+                raise typer.Exit(1)
+            cal.save(con, [cal.Snapshot(window, resets_at, used, now, "manual")])
+        result = cal.fit(con, window)
+
+    if as_json:
+        print(json.dumps(asdict(result) | {"ready": result.ready}, default=str, indent=2))
+    else:
+        render.render_calibration(result, console)
+
+
+@app.command()
+def statusline(
+    setup: bool = typer.Option(False, "--setup", help="Show how to turn this on in Claude Code."),
+) -> None:
+    """Status-line command for Claude Code: records usage-limit readings, prints a summary.
+
+    Claude Code runs it after each reply with session data on stdin. It only appends to a
+    small local file (fast, never touches the database) and never fails.
+    """
+    if setup:
+        from tokcast import render
+
+        render.render_statusline_setup(console)
+        return
+    from tokcast import capture  # standard library only, so this stays fast
+
+    print(capture.run(sys.stdin.read(), config.data_dir()))
 
 
 @app.command()

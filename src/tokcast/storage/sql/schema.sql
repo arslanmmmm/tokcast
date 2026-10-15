@@ -73,5 +73,18 @@ CREATE TABLE IF NOT EXISTS requests (
     agent_id                  VARCHAR      -- set for calls made by a subagent
 );
 
+-- Usage-limit readings: "X% of the 5-hour (or 7-day) limit used" at a moment in time,
+-- captured by `tokcast statusline` or entered with `tokcast calibrate --used`.
+-- The same reading seen again keeps its earliest time (when that % was first reached).
+CREATE TABLE IF NOT EXISTS usage_snapshots (
+    "window"      VARCHAR NOT NULL,    -- '5h' or '7d'
+    resets_at     TIMESTAMP NOT NULL,  -- UTC; the window started 5 hours / 7 days earlier
+    used_pct      DOUBLE NOT NULL,     -- 0..100
+    ts            TIMESTAMP NOT NULL,  -- UTC, when this reading was taken
+    source        VARCHAR NOT NULL,    -- 'statusline' or 'manual'
+    session_id    VARCHAR,
+    PRIMARY KEY ("window", resets_at, used_pct)
+);
+
 -- Migrations for databases created by older tokcast versions. Each is idempotent.
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS agent_id VARCHAR;

@@ -1,11 +1,16 @@
 """Terminal output (Rich). Turns report data into tables; contains no analysis logic."""
 
+import json
+from datetime import UTC, datetime
+
 from rich.console import Console, Group
 from rich.markup import escape  # user text (prompts, project names) must never be markup
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from tokcast.calibrate import MIN_POINTS, Calibration
+from tokcast.calibrate.mapping import MIN_PCT
 from tokcast.evaluate import BacktestResult
 from tokcast.predict import Estimate, Forecast, Range
 from tokcast.stats import StatsReport
@@ -233,6 +238,41 @@ def _basis(e: Estimate) -> str:
     return basis + (f"; assumed: {', '.join(assumed)}" if assumed else "")
 
 
+def _pct_range(p: tuple[float, float, float] | None) -> str:
+    if not p:
+        return "-"
+    low, _, high = p
+    return f"~{low:.1f}–{high:.1f}%" if high < 10 else f"~{low:.0f}–{high:.0f}%"  # noqa: RUF001
+
+
+def _limit_notes(f: Forecast, console: Console, show_limit: bool) -> None:
+    """Where this turn would leave you, if a current usage reading exists."""
+    if not show_limit:
+        if f.history_turns:
+            console.print(
+                Text(
+                    f"% of your usage limit appears after {MIN_POINTS} readings "
+                    f"(have {f.limit_readings}): tokcast calibrate --used <percent>.",
+                    style="dim",
+                )
+            )
+        return
+    now, mine = f.limit_now, f.estimates[0].limit_pct
+    if now is None or mine is None:
+        return
+    left = max(100 - now.used_pct, 0)
+    console.print(
+        f"Now: [bold]{now.used_pct:.0f}%[/] of your 5h limit used "
+        f"(resets {_local(now.resets_at):%H:%M}). This turn would take you to "
+        f"~{now.used_pct + mine[1]:.0f}% (median)."
+    )
+    if mine[2] > left:
+        console.print(
+            f"[yellow]Careful:[/] the expensive end (~{mine[2]:.0f}%) wouldn't fit in the "
+            f"~{left:.0f}% left. A cheaper option above, or waiting for the reset, would."
+        )
+
+
 def render_forecast(f: Forecast, console: Console) -> None:
     c = f.classification
     matched = ", ".join(f'"{w}"' for w in c.matched) if c.matched else "no keywords"
@@ -250,10 +290,14 @@ def render_forecast(f: Forecast, console: Console) -> None:
     )
     console.print(Panel(header, title="tokcast predict", title_align="left", expand=False))
 
+    show_limit = any(e.limit_pct for e in f.estimates)
+    limit_col = f"% of {f.limit_window} limit" if show_limit else None
     t = _table(
         "Estimated tokens for this turn (80% range, median)",
-        *("", "model", "effort", "processed", "median", "written by model", "basis"),
-        right=("processed", "median", "written by model"),
+        *("", "model", "effort", "processed", "median", "written by model"),
+        *([limit_col] if limit_col else []),
+        "basis",
+        right=("processed", "median", "written by model", limit_col or ""),
     )
     t.columns[-1].no_wrap = False
     for i, e in enumerate(f.estimates):
@@ -264,11 +308,14 @@ def render_forecast(f: Forecast, console: Console) -> None:
             _range(e.total),
             Text(fmt_tokens(e.total.median), style="bold" if i == 0 else ""),
             _range(e.output),
+            *([_pct_range(e.limit_pct)] if show_limit else []),
             Text(_basis(e), style="dim"),
         )
     console.print(t)
     if f.estimates[0].adjustments:
         console.print(Text("Adjustments: " + "; ".join(f.estimates[0].adjustments), style="dim"))
+
+    _limit_notes(f, console, show_limit)
 
     if f.similar:
         console.print("\n[bold]Similar past prompts[/]")
@@ -397,3 +444,73 @@ def backtest_markdown(result: BacktestResult) -> str:
             f"| x{s.bias:.2f} | x{s.width:.0f} | {s.pinball:.3f} | {vs} |"
         )
     return "\n".join(lines)
+
+
+def _local(dt: datetime) -> datetime:
+    """Naive UTC -> local time, for display."""
+    return dt.replace(tzinfo=UTC).astimezone()
+
+
+def render_statusline_setup(console: Console) -> None:
+    console.print(
+        "tokcast can record your usage-limit readings automatically. Claude Code shows them "
+        "to its status-line command (claude.ai Pro and Max plans, after the first reply).\n"
+        "Add this to [bold]~/.claude/settings.json[/] (tokcast doesn't edit it for you):\n"
+    )
+    snippet = json.dumps(
+        {"statusLine": {"type": "command", "command": "tokcast statusline"}}, indent=2
+    )
+    console.print(Panel(Text(snippet), expand=False))
+    console.print(
+        "If you already have a status line, keep it: add tokcast to the same command, e.g.\n"
+        "  [dim]tee >(tokcast statusline >/dev/null) | your-existing-command[/]\n"
+        "Readings are appended to a local file and loaded by [bold]tokcast ingest[/] or "
+        "[bold]tokcast calibrate[/]. Nothing leaves your machine."
+    )
+
+
+def render_calibration(c: Calibration, console: Console) -> None:
+    label = {"5h": "5-hour", "7d": "7-day"}[c.window]
+    if c.points:
+        t = _table(
+            f"Usage readings for the {label} limit",
+            *("taken", "source", "used", "weighted tokens", "% per 1M"),
+            right=("used", "weighted tokens", "% per 1M"),
+        )
+        for p in c.points[-10:]:
+            t.add_row(
+                f"{_local(p['ts']):%Y-%m-%d %H:%M}",
+                p["source"],
+                f"{p['used_pct']:.0f}%",
+                fmt_tokens(p["weighted_tokens"]),
+                f"{p['pct_per_million']:.2f}",
+            )
+        console.print(t, "")
+    if c.skipped:
+        console.print(
+            f"[dim]{c.skipped} reading(s) not used yet: under {MIN_PCT:.0f}% (too coarse) or "
+            "taken after the last ingested call (run tokcast ingest).[/]"
+        )
+    if not c.ready:
+        console.print(
+            f"[yellow]{len(c.points)} of {MIN_POINTS} readings[/] needed before predictions show "
+            f"% of your {label} limit. Record one with "
+            "[bold]tokcast calibrate --used <percent>[/], or let [bold]tokcast statusline[/] "
+            "collect them (see tokcast statusline --setup)."
+        )
+        return
+    per_pct = 1e6 / c.k
+    typical = per_pct / c.turn_weight if c.turn_weight else None
+    console.print(
+        f"[bold]1% of your {label} limit ≈ {fmt_tokens(per_pct)} weighted tokens[/]"
+        + (f" ≈ {fmt_tokens(typical)} tokens processed in a typical turn" if typical else "")
+        + f"  (from {len(c.points)} readings; spread {c.k_low:.2f}-{c.k_high:.2f} % per 1M)."
+    )
+    console.print(
+        Text(
+            "Estimates: Anthropic doesn't publish how limits count tokens. Usage outside this "
+            "machine's Claude Code (claude.ai, other computers) isn't in your logs, which makes "
+            "these percentages err on the high side.",
+            style="dim",
+        )
+    )

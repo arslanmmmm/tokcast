@@ -63,6 +63,8 @@ class Estimate:
     group: str  # human-readable group, e.g. "bugfix turns"
     n: int  # history turns behind the spread (0 for the prior)
     adjustments: list[str] = field(default_factory=list)  # e.g. "high effort x1.31 (assumed)"
+    # % of the usage-limit window (low, median, high), once calibrated (see calibrate/)
+    limit_pct: tuple[float, float, float] | None = None
 
 
 @dataclass(frozen=True)

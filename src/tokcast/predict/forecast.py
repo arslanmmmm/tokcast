@@ -9,6 +9,7 @@ from typing import Protocol
 
 import pandas as pd
 
+from tokcast.calibrate.mapping import Calibration, Reading
 from tokcast.features.build import CurrentConversation
 from tokcast.features.classify import Classification, classify
 from tokcast.predict import priors
@@ -47,6 +48,9 @@ class Forecast:
     history_turns: int
     similar: list[dict] = field(default_factory=list)
     new_chat: Estimate | None = None  # same request in a fresh conversation, if cheaper
+    limit_window: str | None = None  # "5h" when estimates carry limit_pct
+    limit_readings: int = 0  # calibration readings so far
+    limit_now: Reading | None = None  # latest usage reading, if the window is still open
 
 
 def options_to_compare(model: str, effort: str) -> list[tuple[str, str]]:
@@ -71,6 +75,8 @@ def forecast(
     new_chat_tokens: float | None = None,
     compare: bool = True,
     predictor: Predictor | None = None,
+    calibration: Calibration | None = None,
+    reading: Reading | None = None,
 ) -> Forecast:
     classification = classify(prompt)
     predictor = (predictor or BaselinePredictor()).fit(turns)
@@ -104,7 +110,15 @@ def forecast(
         if alt.total.median < estimates[0].total.median * 0.8:
             new_chat = alt
 
+    if calibration is not None and calibration.ready:
+        for est in [*estimates, *([new_chat] if new_chat else [])]:
+            r = est.total
+            est.limit_pct = tuple(calibration.pct_of_limit(v) for v in (r.low, r.median, r.high))
+
     return Forecast(
+        limit_window=calibration.window if calibration is not None else None,
+        limit_readings=len(calibration.points) if calibration is not None else 0,
+        limit_now=reading,
         prompt_chars=len(prompt),
         classification=classification,
         context=context,
