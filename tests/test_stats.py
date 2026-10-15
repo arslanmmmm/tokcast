@@ -7,6 +7,7 @@ turn L1 (old, 2025-06-01 09:00Z): lr1 490 + lr2 900 + lr3 12 = 1402
 
 import json
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -168,3 +169,29 @@ def test_cli_stats_empty_period(home, logs_dir):
     result = runner.invoke(app, ["stats", "--days", "1"])
     assert result.exit_code == 0
     assert "No turns in this period" in result.output
+
+
+def test_brackets_in_user_text_are_shown_not_interpreted(home, tmp_path):
+    # Rich treats [..] as markup: "[/bold]" crashed it and "[red]" silently vanished.
+    import shutil
+
+    logs = tmp_path / "logs" / "-Users-dev-[weird]"
+    logs.mkdir(parents=True)
+    src = Path(__file__).parent / "fixtures" / "claude_code" / "-Users-dev-myapp" / "s1.jsonl"
+    text = src.read_text().replace(
+        "fix the login bug in auth.py", "fix [/bold] and [red] in list[int]"
+    )
+    text = text.replace('"cwd":"/Users/dev/myapp"', '"cwd":"/Users/dev/[weird]"')
+    (logs / "s1.jsonl").write_text(text)
+    shutil.copytree(src.parent / "s1", logs / "s1")
+    runner.invoke(app, ["ingest", "--path", str(tmp_path / "logs")])
+
+    stats = runner.invoke(app, ["stats"], env={"COLUMNS": "200"})
+    assert stats.exit_code == 0, stats.output
+    assert "fix [/bold] and [red] in list[int]" in stats.output
+    assert "[weird]" in stats.output
+    predict = runner.invoke(
+        app, ["predict", "fix [/bold] and [red] in list[int]"], env={"COLUMNS": "200"}
+    )
+    assert predict.exit_code == 0, predict.output
+    assert '"fix [/bold] and [red] in list[int]"' in predict.output  # similar past prompt

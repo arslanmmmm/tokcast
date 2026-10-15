@@ -1,6 +1,7 @@
 """Terminal output (Rich). Turns report data into tables; contains no analysis logic."""
 
 from rich.console import Console, Group
+from rich.markup import escape  # user text (prompts, project names) must never be markup
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -69,7 +70,7 @@ def render_stats(report: StatsReport, console: Console, *, day_rows: int = 14) -
     )
     for r in report.by_model:
         t.add_row(
-            r["model"],
+            escape(r["model"]),
             r["effort"],
             f"{r['turns']:,}",
             f"{r['api_calls']:,}",
@@ -109,7 +110,7 @@ def render_stats(report: StatsReport, console: Console, *, day_rows: int = 14) -
     )
     for r in report.by_project:
         t.add_row(
-            r["project"],
+            escape(r["project"]),
             str(r["sessions"]),
             f"{r['turns']:,}",
             fmt_tokens(r["total_tokens"]),
@@ -132,10 +133,10 @@ def render_stats(report: StatsReport, console: Console, *, day_rows: int = 14) -
         first = " ".join((r["first_prompt"] or "(text not stored)").split())
         t.add_row(
             f"{r['started']:%Y-%m-%d}",
-            r["project"] or "-",
+            escape(r["project"] or "-"),
             str(r["turns"]),
             fmt_tokens(r["total_tokens"]),
-            first[:60],
+            escape(first[:60]),
         )
     console.print(t, "")
 
@@ -191,7 +192,7 @@ def _quality_note(report: StatsReport) -> Group | Text:
     rows = report.data_quality
     checked = sum(r["api_calls"] for r in rows)
     flagged = [r for r in rows if r["flagged"]]
-    versions = ", ".join(r["version"] for r in rows)
+    versions = ", ".join(escape(r["version"]) for r in rows)
     if not flagged:
         return Text(
             f"✓ Data quality: no suspicious usage values in {checked:,} API calls "
@@ -210,7 +211,7 @@ def _quality_note(report: StatsReport) -> Group | Text:
     )
     for r in flagged:
         t.add_row(
-            r["version"],
+            escape(r["version"]),
             f"{r['api_calls']:,}",
             f"{r['flagged']:,}",
             str(r["thinking_exceeds_output"]),
@@ -273,7 +274,7 @@ def render_forecast(f: Forecast, console: Console) -> None:
         console.print("\n[bold]Similar past prompts[/]")
         for s in f.similar:
             console.print(
-                f'  "{s["text"][:50]}" → [bold]{fmt_tokens(s["total_tokens"])}[/]'
+                f'  "{escape(s["text"][:50])}" → [bold]{fmt_tokens(s["total_tokens"])}[/]'
                 f" [dim]({s['model']}·{s['effort']}, {s['ts']:%b %d})[/]",
                 soft_wrap=True,
             )
@@ -305,7 +306,7 @@ def _pct(x: float) -> str:
 
 
 def _scores_table(title: str, result: BacktestResult, target: str) -> Table:
-    numbers = ("in range", "low", "high", "≤2x", "bias", "width", "pinball")
+    numbers = ("in range", "low", "high", "≤2x", "bias", "width", "pinball", "vs baseline")
     t = _table(title, "method", *numbers, right=numbers)
     t.columns[0].no_wrap = False  # long method names wrap; the numbers never do
     for m in result.methods:
@@ -320,8 +321,18 @@ def _scores_table(title: str, result: BacktestResult, target: str) -> Table:
             f"x{s.bias:.2f}",
             f"x{s.width:.0f}",
             Text(f"{s.pinball:.3f}", style=style),
+            _vs_baseline(m) if target == "total" else "",
         )
     return t
+
+
+def _vs_baseline(m) -> Text:
+    """Paired difference in pinball loss: green if clearly better, red if clearly worse."""
+    if m.vs_baseline is None:
+        return Text("")
+    mean, low, high = m.vs_baseline
+    style = "green" if high < 0 else "red" if low > 0 else "dim"  # interval excludes zero?
+    return Text(f"{mean:+.3f}", style=style)
 
 
 def render_backtest(result: BacktestResult, console: Console) -> None:
@@ -359,7 +370,9 @@ def render_backtest(result: BacktestResult, console: Console) -> None:
         Text(
             "in range: share of actual values inside the 80% range (target 80%). low/high: "
             "forecast too low/high. ≤2x: median within a factor 2. bias: typical "
-            "forecast/actual. width: typical high/low. pinball: quantile loss, lower is better.",
+            "forecast/actual. width: typical high/low. pinball: quantile loss, lower is better. "
+            "vs baseline: paired pinball difference on the same turns; green/red = the 95% "
+            "interval excludes zero (clearly better/worse), grey = within noise.",
             style="dim",
         )
     )
@@ -372,13 +385,15 @@ def backtest_markdown(result: BacktestResult) -> str:
         f"Backtest on {source} data: {result.n_turns:,} turns, the newest {result.n_test:,} "
         f"predicted walk-forward in {result.folds} folds (tokens processed per turn).",
         "",
-        "| method | in 80% range | within 2x | bias | width | pinball loss |",
-        "|---|---|---|---|---|---|",
+        "| method | in 80% range | within 2x | bias | width | pinball loss "
+        "| vs baseline (95% CI) |",
+        "|---|---|---|---|---|---|---|",
     ]
     for m in result.methods:
         s, name = m.total, f"**{m.name}**" if m.name == _OURS else m.name
+        vs = "" if m.vs_baseline is None else "{:+.3f} [{:+.3f}, {:+.3f}]".format(*m.vs_baseline)
         lines.append(
             f"| {name} | {_pct(s.coverage)} ±{s.coverage_margin * 100:.0f} | {_pct(s.within_2x)} "
-            f"| x{s.bias:.2f} | x{s.width:.0f} | {s.pinball:.3f} |"
+            f"| x{s.bias:.2f} | x{s.width:.0f} | {s.pinball:.3f} | {vs} |"
         )
     return "\n".join(lines)
