@@ -11,6 +11,7 @@ import re
 import shlex
 import shutil
 import sys
+import tempfile
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -22,6 +23,7 @@ from rich.console import Console
 from rich.table import Table
 
 from tokcast import __version__, config, render
+from tokcast.evaluate import backtest
 from tokcast.features.build import current_conversation, load_turns, new_chat_context
 from tokcast.ingest import pipeline
 from tokcast.ingest.sources import ClaudeCodeSource
@@ -227,6 +229,50 @@ def _parse_tokens(text: str) -> float:
         console.print(f"[red]Can't read token count:[/] {text} (try 120k or 1.5M)")
         raise typer.Exit(1)
     return float(match.group(1)) * {"": 1, "k": 1e3, "m": 1e6}[match.group(2)]
+
+
+@app.command("eval")
+def eval_(
+    folds: int = typer.Option(5, "--folds", min=1, help="Walk-forward folds."),
+    test_fraction: float = typer.Option(
+        0.5, "--test-fraction", min=0.1, max=0.9, help="Share of newest turns used as test set."
+    ),
+    synthetic: int | None = typer.Option(
+        None, "--synthetic", min=10, help="Evaluate on N generated sessions instead."
+    ),
+    seed: int = typer.Option(42, "--seed", help="Seed for --synthetic."),
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+    markdown: bool = typer.Option(False, "--markdown", help="Print a Markdown table."),
+) -> None:
+    """Backtest the predictor on past turns: how often were the ranges right?"""
+    if synthetic:
+        with tempfile.TemporaryDirectory() as tmp:
+            synth_gen.generate(Path(tmp), sessions=synthetic, seed=seed)
+            with db.connect(":memory:") as con:
+                pipeline.ingest(con, ClaudeCodeSource(), Path(tmp))
+                turns, data = load_turns(con), "synthetic"
+    else:
+        if not config.db_path().exists():
+            console.print("No data yet. Run [bold]tokcast ingest[/] first, or try --synthetic 300.")
+            raise typer.Exit(1)
+        with db.connect(config.db_path()) as con:
+            turns = load_turns(con)
+            data = "synthetic" if synth_gen.is_synthetic_db(con) else "real"
+
+    try:
+        result = backtest(turns, data=data, folds=folds, test_fraction=test_fraction)
+    except ValueError as exc:
+        console.print(
+            f"[yellow]Not enough history to evaluate:[/] {exc}. Keep using Claude Code and "
+            f"re-run tokcast ingest, or try [bold]tokcast eval --synthetic 300[/]."
+        )
+        raise typer.Exit(1) from None
+    if as_json:
+        print(json.dumps(asdict(result), default=str, indent=2))
+    elif markdown:
+        print(render.backtest_markdown(result))
+    else:
+        render.render_backtest(result, console)
 
 
 @app.command()

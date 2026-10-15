@@ -29,7 +29,10 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import duckdb
 
 MARKER_FILE = "TOKCAST_SYNTHETIC"  # written into every generated folder
 SYNTHETIC_PROJECT_PREFIX = "-synthetic-"
@@ -467,6 +470,12 @@ def is_synthetic(root: Path) -> bool:
     return root.is_dir() and any(
         p.name.startswith(SYNTHETIC_PROJECT_PREFIX) for p in root.iterdir()
     )
+
+
+def is_synthetic_db(con: "duckdb.DuckDBPyConnection") -> bool:
+    """True if a database holds generated sessions (their cwd starts with /synthetic/)."""
+    row = con.execute("SELECT count(*) FROM sessions WHERE cwd LIKE '/synthetic/%'").fetchone()
+    return bool(row and row[0])
 
 
 def _pick(rng: random.Random, weights: dict[str, float]) -> str:

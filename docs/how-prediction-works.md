@@ -77,6 +77,58 @@ and shows a tip if that would be clearly cheaper. It isn't always: first turns e
   first turns cost several times more. As a shrunk multiplier, the effect survives even
   with two examples.
 
+## Measuring accuracy: `tokcast eval`
+
+A walk-forward backtest: turns are sorted by time, the newest half is the test set, and
+each test turn is predicted by a model trained only on turns *before* it (5 folds). A
+random split would leak the future into training and flatter the results.
+
+Five methods are scored on the same turns:
+
+- *global median*: one range for everything
+- *single call (ctok-style)*: context + prompt + output for one request, no tool loop
+- *context x re-reads*: tokcast's core idea alone
+- *assumptions only*: what a new user gets
+- *tokcast baseline*: the full model
+
+**Synthetic data** (pipeline check; reproduce with `tokcast eval --synthetic 300`):
+
+Backtest on synthetic data: 2,840 turns, the newest 1,420 predicted walk-forward in 5 folds (tokens processed per turn).
+
+| method | in 80% range | within 2x | bias | width | pinball loss |
+|---|---|---|---|---|---|
+| global median | 80% ±2 | 37% | x1.03 | x35 | 0.332 |
+| single call (ctok-style) | 30% ±2 | 30% | x0.33 | x1 | 0.629 |
+| context x re-reads | 79% ±2 | 37% | x1.00 | x19 | 0.289 |
+| assumptions only | 80% ±2 | 60% | x1.19 | x10 | 0.231 |
+| **tokcast baseline** | 80% ±2 | 63% | x1.00 | x11 | 0.207 |
+
+The full model is calibrated (80% of turns inside the 80% range) and has the lowest
+pinball loss. "Assumptions only" scores almost as well, which is expected: the generator
+was built on the same assumptions. So these numbers prove the machinery works, not that
+the predictions are accurate on real usage.
+
+**The author's real history** (October 2026):
+
+Backtest on real data: 53 turns, the newest 26 predicted walk-forward in 5 folds (tokens processed per turn).
+
+| method | in 80% range | within 2x | bias | width | pinball loss |
+|---|---|---|---|---|---|
+| global median | 58% ±19 | 38% | x1.23 | x19 | 0.364 |
+| single call (ctok-style) | 35% ±18 | 35% | x0.50 | x2 | 0.535 |
+| context x re-reads | 81% ±15 | 50% | x1.00 | x19 | 0.290 |
+| assumptions only | 65% ±18 | 65% | x0.60 | x10 | 0.367 |
+| **tokcast baseline** | 62% ±19 | 42% | x0.50 | x9 | 0.317 |
+
+With 26 test turns, coverage is only known to about ±19 points, so the methods can't be
+told apart reliably. The full model under-predicted (bias x0.50), and a diagnosis showed
+why: the training period was mostly one project of short Q&A turns (median 1.0 context
+re-reads), and the test period was a different project of long agentic milestones
+(median 2.0 re-reads). A model that learns task-specific habits suffers more from that
+kind of shift than one that pools everything. Weighting recent turns more is the standard
+remedy, but it was deliberately *not* tuned on these 26 turns: that would overfit the
+test set. It will be tested once more real history exists.
+
 ## Limitations
 
 - Output length is inherently uncertain; ranges are wide on purpose.
