@@ -207,6 +207,23 @@ adopt the blended estimate only if, on held-out later readings, its median absol
 in % is lower than the current method's with a paired 95% interval excluding zero.
 Caveat: the prior comes from one user, so it's labelled "assumed" everywhere.
 
+**Readings so far (2026-10-19):** 31 readings, all collected by the mod. 17 usable for 5h
+(3 windows), 12 for 7d (1 week). No Claude Code use on Oct 16–18.
+
+**Finding: usage outside the logs is large and lumpy.** The user confirmed using Claude
+elsewhere (claude.ai, apps) on Oct 16–18 and on the morning of Oct 19:
+- 7d went 13% → 34% with zero local requests in between. The ratio jumped from ~1.0 to
+  ~2.4 % per million weighted tokens, so the current weekly "+x%" is ~2× too high.
+- 5h went 38% → 77% in three hours, while local tokens explain ~13 points of that. The
+  ratio for those readings was ~14 against ~6–9 otherwise.
+
+**Candidate estimator for milestone 10 (not adopted):** fit the ratio from *increments*
+between consecutive readings of the same window (Δ% ÷ Δ weighted tokens) instead of
+totals since the window started. Outside usage before a pair then cancels, and a pair
+with outside usage between them shows up as an outlier (detectable, or downweighted).
+It is tested under the same decision rule as the starting guess, against the current
+totals method, on held-out later readings.
+
 ### First real check of the mod (2026-10-15)
 
 The draft "go for next milestone" was estimated by 9a at ~2.9M tokens (364k–7.4M); the
