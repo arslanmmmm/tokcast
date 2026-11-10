@@ -2,7 +2,7 @@
 export type Bubble =
   | { kind: 'idle' }
   | { kind: 'thinking' }
-  | { kind: 'answer'; lines: string[] }
+  | { kind: 'answer'; lines: string[]; compact?: string | null } // compact: button label
   | { kind: 'error'; lines: string[] }
 
 // How the character shows above the prompt: full = face, button and answer;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { firstLine, parse, summarize, tokens } from '../hooks/bubble'
+import { compactButton, firstLine, parse, summarize, tokens } from '../hooks/bubble'
 import type { Forecast } from '../hooks/bubble'
 import { FORECAST_V1 } from './fixtures/forecast'
 
@@ -79,8 +79,18 @@ describe('summarize', () => {
     const f = {
       ...forecast(),
       advice: [
-        { message: 'Compact the conversation first (/compact): ~60% fewer tokens predicted', assumed: true },
-        { message: 'Use medium effort: ~26% fewer tokens predicted', assumed: false },
+        {
+          kind: 'compact',
+          message: 'Compact the conversation first (/compact): ~60% fewer tokens predicted',
+          saving_share: 0.6,
+          assumed: true,
+        },
+        {
+          kind: 'effort',
+          message: 'Use medium effort: ~26% fewer tokens predicted',
+          saving_share: 0.26,
+          assumed: false,
+        },
       ],
     }
     expect(summarize(f)[4]).toBe(
@@ -114,5 +124,24 @@ describe('parse', () => {
 
   test('keeps the first non-empty line of an error', () => {
     expect(firstLine('\nNo conversation found.\nmore')).toBe('No conversation found.')
+  })
+})
+
+describe('compactButton', () => {
+  const tip = (kind: string, share: number) => ({
+    kind,
+    message: `${kind}: ~${Math.round(share * 100)}% fewer tokens predicted`,
+    saving_share: share,
+    assumed: kind === 'compact',
+  })
+
+  test('offers compacting in one click when tokcast suggests it, with its saving', () => {
+    const f = { ...forecast(), advice: [tip('new_chat', 0.9), tip('compact', 0.87)] }
+    expect(compactButton(f)).toBe('Compact now (~87% fewer tokens)')
+  })
+
+  test('nothing to click when compacting isn\'t suggested', () => {
+    expect(compactButton({ ...forecast(), advice: [tip('effort', 0.26)] })).toBeNull()
+    expect(compactButton(forecast())).toBeNull() // older tokcast: no advice at all
   })
 })

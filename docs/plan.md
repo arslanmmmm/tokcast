@@ -1,7 +1,7 @@
 # Plan, progress and decisions
 
 **Status (2026-11-10): v0.1, milestone 9 (Claude Code mod), 10a, 10b, and phases A and B
-of the review roadmap done.** 197 Python tests (97.8% coverage) and 42 mod tests pass; CI
+of the review roadmap done.** 197 Python tests (97.8% coverage) and 47 mod tests pass; CI
 runs lint, mypy and the coverage gate. A six-agent review (below) set the roadmap: phases A–E.
 This file records what was built, the decisions behind it, and what's next.
 
@@ -34,7 +34,8 @@ This file records what was built, the decisions behind it, and what's next.
 | B1 | Versioned `predict --json` contract; numbered schema migrations | ✅ | `b63206f`, `e0e544c` |
 | B2 | mypy (63 → 0 errors, none silenced), coverage ratchet 97%, render tests, in CI | ✅ | `c07cd53`, `7a8b557` |
 | B3 | Ingest isolates failing files; one model/effort list; render/ and parsing.py split | ✅ | `3b71502`..`b14eb81` |
-| 11a | The cheaper next move: advice ranked by the model's predicted saving | ✅ | after `18f9618` |
+| 11a | The cheaper next move: advice ranked by the model's predicted saving | ✅ | `c92e252` |
+| 11b | The mod's **Compact now** button: one click, draft kept | ✅ | after `c92e252` |
 
 ## Key decisions
 
@@ -228,7 +229,10 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
     a crowded category, and it would send drafts to Anthropic before the user chose to
     send. *Later, opt-in:* a warning before an expensive send that never blocks.
     Additive to the `predict --json` contract (still v1); the old `new_chat` field stays
-    until a version bump.
+    until a version bump. **11b:** only `/compact` gets a button (`$.session.compact()`,
+    the same call, draft kept). Not `/clear` (wipes the conversation, and the mod API has
+    no call for it) and not model/effort (settings that outlast the prompt): a tip may
+    not take those steps for the user.
 
 ## Findings from the author's real logs
 

@@ -40,6 +40,11 @@ estimates before you send it:
   When a cheaper next move exists (`/compact`, a new chat, lower effort, another model),
   the bubble shows tokcast's top one as a tip, marked "(assumed)" where it leans on an
   assumption.
+- **One click where it's safe.** When compacting is suggested, a **Compact now** button
+  does what `/compact` does (`$.session.compact()`) and keeps your draft in the box; the
+  bubble then shows the context before and after. A new chat (`/clear` wipes the
+  conversation) and model or effort changes (settings that outlast the prompt) stay text
+  you act on yourself.
 - **Usage limits.** "% used now" comes straight from Claude Code (`rateLimits`: the 5-hour
   and 7-day windows; there is no daily limit). What *this turn* would add needs tokcast's
   calibration (tokens → % of limit), learned from readings. The mod collects them itself:
@@ -86,7 +91,7 @@ The mod has four options (`/config`, or `pluginConfigs` in settings):
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 42 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 47 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 

@@ -26,7 +26,8 @@ export type Forecast = {
   weekly_readings?: number
   limit_assumed_plan?: string | null // the % leans on this plan's starting guess
   weekly_assumed_plan?: string | null
-  advice?: Array<{ message: string; assumed: boolean }> // ranked; absent before tokcast 0.2
+  // ranked by predicted saving (tokcast's predict/advice.py); absent before tokcast 0.2
+  advice?: Array<{ kind: string; message: string; saving_share: number; assumed: boolean }>
 }
 
 // The % of each window already used, as Claude Code reports it live.
@@ -112,8 +113,19 @@ export function summarize(f: Forecast, now: UsedNow = {}): string[] {
   return lines
 }
 
+// The one tip the mod can apply in a click: compacting keeps the draft in the box. A new
+// chat (/clear wipes the conversation) and model or effort changes (settings that outlast
+// this prompt) stay text the user acts on themselves.
+export function compactButton(f: Forecast): string | null {
+  const compact = f.advice?.find(a => a.kind === 'compact')
+  return compact ? `Compact now (~${Math.round(compact.saving_share * 100)}% fewer tokens)` : null
+}
+
 // Parses stdout; a problem becomes a readable message instead of a crash.
-export function parse(stdout: string, now: UsedNow = {}): { lines: string[]; ok: boolean } {
+export function parse(
+  stdout: string,
+  now: UsedNow = {},
+): { lines: string[]; ok: boolean; compact?: string | null } {
   try {
     const forecast = JSON.parse(stdout) as Forecast
     const version = forecast.schema_version ?? 1
@@ -125,7 +137,7 @@ export function parse(stdout: string, now: UsedNow = {}): { lines: string[]; ok:
         ok: false,
       }
     }
-    return { lines: summarize(forecast, now), ok: true }
+    return { lines: summarize(forecast, now), ok: true, compact: compactButton(forecast) }
   } catch {
     return { lines: ["Couldn't read tokcast's output."], ok: false }
   }

@@ -7,7 +7,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Bubble } from '../types'
 import { predictArgs, statuslinePayload, usedNow } from './args'
 import type { RateLimit } from './args'
-import { firstLine, parse } from './bubble'
+import { firstLine, parse, tokens } from './bubble'
 import { isView } from './view'
 import type { View } from './view'
 
@@ -96,8 +96,8 @@ async function forecast($: EngineInterface, cfg: Config, text: string): Promise<
   if (result.exitCode !== 0) {
     return { kind: 'error', lines: [`tokcast failed: ${firstLine(result.stderr || result.stdout)}`] }
   }
-  const { lines, ok } = parse(result.stdout, usedNow(rateLimits))
-  return { kind: ok ? 'answer' : 'error', lines }
+  const { lines, ok, compact } = parse(result.stdout, usedNow(rateLimits))
+  return ok ? { kind: 'answer', lines, compact } : { kind: 'error', lines }
 }
 
 // The band's button: estimate the draft in the prompt box and show it in the bubble.
@@ -116,6 +116,30 @@ async function estimate($: EngineInterface, cfg: Config): Promise<void> {
     next = { kind: 'error', lines: [`Something went wrong: ${firstLine(message(error))}`] }
   }
   if (mine === request) await update($, bubble, () => next)
+}
+
+// One click on the cheaper next move: the same call /compact makes. The draft stays in the
+// box; the old estimate is stale afterwards, so the bubble asks to be clicked again.
+async function compactNow($: EngineInterface): Promise<void> {
+  request += 1 // an estimate still running would describe the old conversation
+  let next: Bubble
+  try {
+    const result = await $.session.compact()
+    if ('skip' in result && result.skip) {
+      next = { kind: 'error', lines: [`Didn't compact: ${result.skip}`] }
+    } else if (result.messages) {
+      const sizes =
+        result.tokensBefore && result.tokensAfter
+          ? `: ${tokens(result.tokensBefore)} → ${tokens(result.tokensAfter)} tokens of context`
+          : ''
+      next = { kind: 'answer', lines: [`Compacted${sizes}.`, 'Ask me again for the new estimate.'] }
+    } else {
+      next = { kind: 'error', lines: ["Didn't compact."] }
+    }
+  } catch (error) {
+    next = { kind: 'error', lines: [`Can't compact right now: ${firstLine(message(error))}`] }
+  }
+  await update($, bubble, () => next)
 }
 
 // Back to the idle face; any estimate still running is dropped when it answers.
@@ -201,6 +225,9 @@ export const register: Register = (on, options) => {
             />
             {hasAnswer || isBusy ? (
               <Button key="dismiss" label="×" onPress={() => reset($)} />
+            ) : null}
+            {state.kind === 'answer' && state.compact ? (
+              <Button key="apply" label={state.compact} onPress={() => compactNow($)} />
             ) : null}
             <Button key="hide" label="hide" onPress={() => setView($, 'mini')} />
           </Box>

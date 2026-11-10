@@ -332,3 +332,60 @@ test('the plan option reaches tokcast', { options: { plan: 'pro' } }, async ($, 
 
   expect(runs.at(-1)?.argv.slice(-2)).toEqual(['--plan', 'pro'])
 })
+
+// -- one click on the cheaper next move (11b) ------------------------------------------
+
+const WITH_COMPACT = JSON.stringify({
+  ...FORECAST_V1,
+  advice: [
+    {
+      kind: 'compact',
+      action: '/compact',
+      message: 'Compact the conversation first (/compact): ~87% fewer tokens predicted',
+      saving_share: 0.87,
+      tokens_saved: 3_000_000,
+      limit_pct_saved: null,
+      basis: 'assumed: a /compact summary of ~20k tokens',
+      assumed: true,
+    },
+  ],
+})
+
+test('"Compact now" compacts the conversation and keeps the draft', async ($, on) => {
+  mock.session(on) // a conversation to compact
+  engine(on, 'refactor the parser', { exitCode: 0, stdout: WITH_COMPACT, stderr: '' })
+  const compacted: unknown[] = []
+  on('session.compact', (_$, e) => {
+    compacted.push(e)
+    const summary = { role: 'user' as const, text: 'Summary so far.', toolUses: [] }
+    return { messages: [summary], tokensBefore: 2_000_000, tokensAfter: 45_000 }
+  })
+  const ui = await band($)
+
+  await ui.press({ key: 'estimate' })
+  await ui.press({ key: 'apply' })
+
+  expect(compacted).toHaveLength(1)
+  expect(await ui.find({ type: 'Text', text: /Compacted: 2\.0M → 45k tokens of context/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Ask me again/ })).toBeDefined()
+})
+
+test('a compact that can\'t run says why', async ($, on) => {
+  engine(on, 'refactor the parser', { exitCode: 0, stdout: WITH_COMPACT, stderr: '' })
+  on('session.compact', () => ({ skip: 'a turn is running' }))
+  const ui = await band($)
+
+  await ui.press({ key: 'estimate' })
+  await ui.press({ key: 'apply' })
+
+  expect(await ui.find({ type: 'Text', text: /Didn't compact: a turn is running/ })).toBeDefined()
+})
+
+test('no compact button without that advice', async ($, on) => {
+  engine(on, 'hello', OK)
+  const ui = await band($)
+
+  await ui.press({ key: 'estimate' })
+
+  expect(await ui.find({ key: 'apply' })).toBeUndefined()
+})
