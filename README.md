@@ -280,11 +280,11 @@ A detailed comparison, including what users of these tools ask for, is in
 
 ```bash
 uv sync                                  # Python 3.12, dev tools and the ml extra
-uv run pytest                            # 135 tests, about 30 s
+uv run pytest                            # 144 tests, about 30 s
 uv run ruff check . && uv run ruff format --check .
 ```
 
-The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 32
+The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 36
 tests). They need the Claude Code binary, so CI doesn't run them yet.
 
 CI runs the Python checks on every push. Fixture logs in `tests/fixtures/` are handwritten, and

@@ -1,8 +1,8 @@
 # Plan, progress and decisions
 
-**Status (2026-10-15): v0.1 complete; milestone 9 (Claude Code mod) complete.** All
-eight v0.1 milestones are done, plus one fix found while demoing on real data; 135 Python
-tests pass and CI is green. Milestone 9 adds a mod for Claude Code (32 tests of its own).
+**Status (2026-11-10): v0.1 and milestone 9 (Claude Code mod) complete; phase A of the
+review roadmap done.** 144 Python tests pass and CI is green; the mod has 36 tests of its
+own. A six-agent review (below) set the roadmap: phases A–E.
 This file records what was built, the decisions behind it, and what's next.
 
 ## Milestones
@@ -27,7 +27,8 @@ This file records what was built, the decisions behind it, and what's next.
 | 9d | Mod docs: README section, privacy/limitations, calibration doc | ✅ | after `a7c6657` |
 | 9e | Mod shares the band with Claude Code's boxes; hide/show | ✅ | `f82d119` |
 | 9f | Mod installable (marketplace file); `/tokcast` removed | ✅ | after `f82d119` |
-| 10 | Starting guess for % of limit per plan, refined by readings | ⏳ | |
+| A | Trust fixes: private files, offline tests, busy DB, atomic state, mod never stuck | ✅ | `519a7f9`..`b941fa4` |
+| 10 | Starting guess for % of limit per plan, refined by readings (phase C) | ⏳ | |
 
 ## Key decisions
 
@@ -230,6 +231,42 @@ The draft "go for next milestone" was estimated by 9a at ~2.9M tokens (364k–7.
 turn used 3.6M. Inside the range, median 20% low. 9a assumed a new chat (63k context) while
 the conversation was at 146k: the gap 9b closes. One turn is an anecdote, not evidence;
 `tokcast eval` remains the test.
+
+## Review and roadmap (2026-11-10)
+
+Six read-only ECC agents reviewed the project (architecture, Python, TypeScript mod,
+ML methodology, security, market). All agreed the foundations are strong (append-only
+idempotent ingest, SQL views, pre-registered decision rules, no network code). Their
+findings, grouped into phases:
+
+- **A. Trust and robustness — done.** The database (full prompt text) was world-readable
+  (verified); the network test covered only ingest; DuckDB could auto-download
+  extensions; a busy database crashed with a traceback; the status-line state could be
+  torn; the mod could stick on "Thinking...".
+- **B. Engineering credibility.** mypy + coverage gate in CI; CLI tests for every command
+  (`CliRunner`); a versioned `predict --json` contract (`schema_version`, JSON Schema, a
+  fixture the mod is tested against); a `schema_version` table with numbered migrations,
+  then read-only opens for `stats`/`eval`; per-file error isolation in ingest; split
+  `cli.py`/`render.py`; one source of truth for model families and efforts; `forecast()`
+  mutates `limit_pct` in place.
+- **C. Milestone 10, revised by the ML review.** Increment estimator as the main one,
+  fitted as a ratio of sums over clean pairs, with outside-usage pairs flagged (a
+  lower quantile is a fairer "local k"); evaluate by forward prediction per window, never
+  splitting a window across train and test; 5h and 7d separately; pre-register that "no
+  decision" is an acceptable result at this sample size; add an 80% coverage check to the
+  rule; label the per-plan prior "assumed" (one user). Also: block bootstrap by session
+  for the paired interval (turns aren't independent); report pinball loss on the log
+  scale too; check whether the token weights (cache read 0.1) are identifiable.
+- **D. Launch.** PyPI + `uvx tokcast`; GIF and a comparison table in the README; a write-up
+  of the "98% of tokens are cache re-reads" finding (the shareable asset); plugin
+  marketplaces; Show HN / r/ClaudeAI. Check `@elliotxie/ccpredict` and claumon first.
+  Security before many installs: secret redaction or `--no-text` for auto-ingest, a
+  salted hash for `--no-text`, `tokcast purge` (needs an exception to append-only),
+  SECURITY.md, pinned plugin releases.
+- **E. Later.** `tokcast serve` (a local daemon owning the DuckDB writer, <50 ms
+  predictions, loopback only); a second log source (Codex CLI) to prove `LogSource`;
+  opt-in shared priors as aggregate files (no text, no hashes). **Not** a hosted backend:
+  trust is the asset and the model isn't validated yet.
 
 ## Next steps
 
