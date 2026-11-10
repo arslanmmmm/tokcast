@@ -38,7 +38,13 @@ const LIMITS: RateLimit[] = [
 ]
 
 type Answer = { exitCode: number; stdout: string; stderr: string }
-type Session = { contextTokens?: number; limits?: RateLimit[] }
+type Session = {
+  contextTokens?: number
+  limits?: RateLimit[]
+  usageFails?: string // $.session.usage() rejects with this
+  delayMs?: number // tokcast answers after this long on the mocked clock
+  clock?: ReturnType<typeof mock.clock>
+}
 
 // The test's hooks stand in for the engine: the prompt box holds `draft`, the
 // session has the given context and usage windows, and every command run is
@@ -48,15 +54,20 @@ function engine(on: On, draft: string, answer: Answer, session: Session = {}) {
   on('prompt.read', () => ({ value: { text: draft, cursor: draft.length } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.id', () => ({ value: 'sess-1' }))
-  on('session.usage', () => ({
-    value: {
-      startedAt: 0,
-      context: { tokens: session.contextTokens, window: 200_000 },
-      rateLimits: session.limits ?? [],
-    },
-  }))
-  on('process.run', (_$, e) => {
+  on('session.usage', () =>
+    session.usageFails
+      ? { deny: session.usageFails }
+      : {
+          value: {
+            startedAt: 0,
+            context: { tokens: session.contextTokens, window: 200_000 },
+            rateLimits: session.limits ?? [],
+          },
+        },
+  )
+  on('process.run', async (_$, e) => {
     runs.push(e)
+    if (session.delayMs && session.clock) await session.clock.sleep(session.delayMs)
     return { value: { ...answer, isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return runs
@@ -268,4 +279,63 @@ test('an unknown saved choice (e.g. the removed "off") falls back to the full ch
   const ui = await band($)
 
   expect(await ui.find({ key: 'estimate' })).toBeDefined()
+})
+
+// -- never stuck on "Thinking..." -------------------------------------------------------
+
+test('an engine error before tokcast runs shows an error, not "Thinking..." forever', async ($, on) => {
+  engine(on, 'hello', OK, { usageFails: 'engine hiccup' })
+  const ui = await band($)
+
+  await ui.press({ key: 'estimate' })
+
+  expect(await ui.find({ type: 'Button', text: 'Thinking...' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /engine hiccup/ })).toBeDefined()
+})
+
+test('a reload during an estimate does not leave it thinking', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, 'hello', OK, { delayMs: 1000, clock })
+  store(on)
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  const ui = await band($)
+
+  const pressing = ui.press({ key: 'estimate' })
+  await clock.settle() // tokcast is still running...
+  await $.session.start({ cwd: '/x', surface: 'desktop', isInteractive: true }) // ...reload
+
+  expect(await ui.find({ type: 'Button', text: 'How much will this cost?' })).toBeDefined()
+  await clock.advance(1000)
+  await pressing
+  expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined() // its answer is stale
+})
+
+test('an answer that arrives after the prompt was sent is dropped', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, 'hello', OK, { delayMs: 1000, clock })
+  on('prompt.submit', (_$, e) => ({ text: e.text }))
+  const ui = await band($)
+
+  const pressing = ui.press({ key: 'estimate' })
+  await clock.settle()
+  await $.prompt.submit({ text: 'hello', wait: false, origin: { kind: 'composer' } }) // sent first
+  await clock.advance(1000)
+  await pressing
+
+  expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', text: 'How much will this cost?' })).toBeDefined()
+})
+
+test('× cancels a running estimate', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, 'hello', OK, { delayMs: 1000, clock })
+  const ui = await band($)
+
+  const pressing = ui.press({ key: 'estimate' })
+  await clock.settle()
+  await ui.press({ key: 'dismiss' })
+  await clock.advance(1000)
+  await pressing
+
+  expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined()
 })

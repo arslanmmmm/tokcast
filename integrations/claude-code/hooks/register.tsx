@@ -62,6 +62,14 @@ async function refresh($: EngineInterface, cfg: Config): Promise<void> {
   if (cfg.autoIngest && !cfg.home) await runTokcast($, cfg, ['ingest'], '')
 }
 
+// Each estimate gets a number; sending the prompt, ×, or a reload moves it on, so an
+// answer that arrives late is dropped instead of overwriting a newer state.
+let request = 0
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 // Runs tokcast on a prompt in this session's situation: the answer, or why not.
 async function forecast($: EngineInterface, cfg: Config, text: string): Promise<Bubble> {
   const { context, rateLimits } = await $.session.usage()
@@ -70,14 +78,11 @@ async function forecast($: EngineInterface, cfg: Config, text: string): Promise<
     model: await $.session.model(),
     effort: (await read($, effort)) || undefined,
   })
+  // A reading that can't be saved must not cost the user their estimate.
+  await recordReadings($, cfg, rateLimits).catch(() => undefined)
+  let result
   try {
-    await recordReadings($, cfg, rateLimits)
-    const result = await runTokcast($, cfg, argv, text)
-    if (result.exitCode !== 0) {
-      return { kind: 'error', lines: [`tokcast failed: ${firstLine(result.stderr || result.stdout)}`] }
-    }
-    const { lines, ok } = parse(result.stdout, usedNow(rateLimits))
-    return { kind: ok ? 'answer' : 'error', lines }
+    result = await runTokcast($, cfg, argv, text)
   } catch {
     return {
       kind: 'error',
@@ -87,18 +92,35 @@ async function forecast($: EngineInterface, cfg: Config, text: string): Promise<
       ],
     }
   }
+  if (result.exitCode !== 0) {
+    return { kind: 'error', lines: [`tokcast failed: ${firstLine(result.stderr || result.stdout)}`] }
+  }
+  const { lines, ok } = parse(result.stdout, usedNow(rateLimits))
+  return { kind: ok ? 'answer' : 'error', lines }
 }
 
 // The band's button: estimate the draft in the prompt box and show it in the bubble.
 async function estimate($: EngineInterface, cfg: Config): Promise<void> {
-  const { text } = await $.prompt.read()
-  if (text.trim() === '') {
-    await update($, bubble, (): Bubble => ({ kind: 'error', lines: ['Type a prompt first, then ask me.'] }))
-    return
-  }
+  request += 1
+  const mine = request
   await update($, bubble, (): Bubble => ({ kind: 'thinking' }))
-  const next = await forecast($, cfg, text)
-  await update($, bubble, () => next)
+  let next: Bubble
+  try {
+    const { text } = await $.prompt.read()
+    next =
+      text.trim() === ''
+        ? { kind: 'error', lines: ['Type a prompt first, then ask me.'] }
+        : await forecast($, cfg, text)
+  } catch (error) {
+    next = { kind: 'error', lines: [`Something went wrong: ${firstLine(message(error))}`] }
+  }
+  if (mine === request) await update($, bubble, () => next)
+}
+
+// Back to the idle face; any estimate still running is dropped when it answers.
+async function reset($: EngineInterface): Promise<void> {
+  request += 1
+  await update($, bubble, (): Bubble => ({ kind: 'idle' }))
 }
 
 // Shows, shrinks or hides the character; the choice is kept across sessions.
@@ -114,8 +136,10 @@ export const register: Register = (on, options) => {
     autoIngest: options.autoIngest !== false,
   }
 
-  // Restore the last show/hide choice.
+  // Restore the last show/hide choice. An estimate from before a reload is gone, so
+  // a saved "Thinking..." would never finish: start idle.
   on('session.start', async ($, e, next) => {
+    await reset($)
     const saved = await $.store.get(VIEW_KEY)
     if (isView(saved)) await update($, view, () => saved)
     return next(e)
@@ -143,7 +167,7 @@ export const register: Register = (on, options) => {
 
   // A sent prompt makes the old estimate stale. Never block the prompt on this.
   on('prompt.submit', ($, e, next) => {
-    update($, bubble, (): Bubble => ({ kind: 'idle' })).catch(() => undefined)
+    reset($).catch(() => undefined)
     return next(e)
   })
 
@@ -152,7 +176,7 @@ export const register: Register = (on, options) => {
 
     // State outlives a reload; a shape from another version must not break the band.
     const saved = await read($, bubble)
-    const state: Bubble = saved && saved.kind in FACES ? saved : { kind: 'idle' }
+    const state: Bubble = saved && Object.hasOwn(FACES, saved.kind) ? saved : { kind: 'idle' }
     const { Box, Button, Text } = $.ui.resolve(e)
     const isBusy = state.kind === 'thinking'
     const hasAnswer = state.kind === 'answer' || state.kind === 'error'
@@ -173,12 +197,8 @@ export const register: Register = (on, options) => {
               label={isBusy ? 'Thinking...' : 'How much will this cost?'}
               onPress={() => (isBusy ? undefined : estimate($, cfg))}
             />
-            {hasAnswer ? (
-              <Button
-                key="dismiss"
-                label="×"
-                onPress={() => update($, bubble, (): Bubble => ({ kind: 'idle' }))}
-              />
+            {hasAnswer || isBusy ? (
+              <Button key="dismiss" label="×" onPress={() => reset($)} />
             ) : null}
             <Button key="hide" label="hide" onPress={() => setView($, 'mini')} />
           </Box>
