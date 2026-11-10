@@ -75,7 +75,21 @@ describe('summarize', () => {
     expect(summarize(forecast({ level: 'prior', n: 0 }))[3]).toMatch(/^basis: built-in assumption/)
   })
 
-  test('adds a tip when a new chat would be clearly cheaper', () => {
+  test("shows tokcast's top advice as the tip, marking assumptions", () => {
+    const f = {
+      ...forecast(),
+      advice: [
+        { message: 'Compact the conversation first (/compact): ~60% fewer tokens predicted', assumed: true },
+        { message: 'Use medium effort: ~26% fewer tokens predicted', assumed: false },
+      ],
+    }
+    expect(summarize(f)[4]).toBe(
+      'tip: Compact the conversation first (/compact): ~60% fewer tokens predicted (assumed)',
+    )
+    expect(summarize(f)).toHaveLength(5) // only the top one fits in the bubble
+  })
+
+  test('an older tokcast without advice still gets the new-chat tip', () => {
     const f = { ...forecast(), new_chat: { ...forecast().estimates[0]!, total: { low: 1, median: 300_000, high: 2 } } }
     expect(summarize(f)[4]).toBe('tip: in a new chat this would be ~300k tokens')
   })

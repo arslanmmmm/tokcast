@@ -79,3 +79,21 @@ def test_a_turn_that_would_not_fit_in_whats_left_is_flagged():
 
     assert "Now: 99% of your 5h limit used" in text
     assert "Careful:" in text and "wouldn't fit" in text
+
+
+def test_the_cheaper_next_move_is_listed_with_its_assumptions():
+    f = forecast(
+        pd.DataFrame(),
+        "now fix the failing test",
+        model="opus",
+        effort="high",
+        context_mode="given",
+        context_tokens=2_000_000,
+        compare=False,
+    )
+
+    text = printed(render.render_forecast, f)
+
+    assert "Cheaper next move" in text
+    assert "/compact" in text and "/clear" in text
+    assert "(assumed)" in text  # the /compact size is an assumption

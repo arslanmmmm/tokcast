@@ -49,6 +49,19 @@ tokcast looks forward. Building it showed where Claude Code's cost actually come
 So tokcast predicts the **whole turn** (every tool call and subagent), as a **range**, with
 the conversation's size built in. A single number would pretend to a precision nobody has.
 
+Then it suggests the **cheaper next move**, ranked by predicted saving:
+
+```
+Cheaper next move (predicted for the same task)
+  • Start a new chat (/clear): ~87% fewer tokens predicted
+  • Compact the conversation first (/compact): ~87% fewer tokens predicted  (assumed)
+  • Use haiku (/model haiku): ~50% fewer tokens predicted, if it can do this task (cost only, not quality)
+```
+
+Each is the model's what-if for the *same* task with one setting changed, so it says
+"predicted"; tokcast doesn't give advice about prompt wording, which its data can't
+support honestly (decision 37 in [docs/plan.md](docs/plan.md)).
+
 ## Install
 
 tokcast isn't on PyPI yet. Install it from GitHub with [uv](https://docs.astral.sh/uv/):
@@ -250,9 +263,9 @@ small real histories yet. So the simpler baseline remains the default.
   current method on held-out readings.
 - **v2: browser extension for claude.ai**, showing a live estimate under the input box.
   `predict --json` and the `Predictor` interface are already the API it needs.
-- **v3: suggestions**, e.g. "Sonnet is enough for this" or "you have ~12% left; this
-  needs ~10%". The first two exist already: the new-chat tip and the
-  "wouldn't fit in what's left" warning.
+- **More suggestions.** The cheaper next move and the "wouldn't fit in what's left" warning
+  exist. Next: an opt-in warning before an expensive send, and "your patterns" (what
+  costs *you* more), shown only as a measured association once there's enough history.
 - **Other tools** (Codex CLI, Cursor, ...) through the pluggable `LogSource` parser
   interface.
 - Model improvements, each to be adopted only if `tokcast eval` shows a real gain:
@@ -281,12 +294,12 @@ A detailed comparison, including what users of these tools ask for, is in
 
 ```bash
 uv sync                                  # Python 3.12, dev tools and the ml extra
-uv run pytest --cov                      # 190 tests, coverage gate (97%), about 45 s
+uv run pytest --cov                      # 197 tests, coverage gate (97%), about 45 s
 uv run ruff check . && uv run ruff format --check .
 uv run mypy                              # type check
 ```
 
-The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 41
+The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 42
 tests). They need the Claude Code binary, so CI doesn't run them yet.
 
 CI runs lint, the type check and the tests with the coverage gate on every push. Fixture logs in `tests/fixtures/` are handwritten, and

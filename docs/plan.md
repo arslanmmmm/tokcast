@@ -1,7 +1,7 @@
 # Plan, progress and decisions
 
 **Status (2026-11-10): v0.1, milestone 9 (Claude Code mod), 10a, 10b, and phases A and B
-of the review roadmap done.** 190 Python tests (97.7% coverage) and 41 mod tests pass; CI
+of the review roadmap done.** 197 Python tests (97.8% coverage) and 42 mod tests pass; CI
 runs lint, mypy and the coverage gate. A six-agent review (below) set the roadmap: phases A–E.
 This file records what was built, the decisions behind it, and what's next.
 
@@ -34,6 +34,7 @@ This file records what was built, the decisions behind it, and what's next.
 | B1 | Versioned `predict --json` contract; numbered schema migrations | ✅ | `b63206f`, `e0e544c` |
 | B2 | mypy (63 → 0 errors, none silenced), coverage ratchet 97%, render tests, in CI | ✅ | `c07cd53`, `7a8b557` |
 | B3 | Ingest isolates failing files; one model/effort list; render/ and parsing.py split | ✅ | `3b71502`..`b14eb81` |
+| 11a | The cheaper next move: advice ranked by the model's predicted saving | ✅ | after `18f9618` |
 
 ## Key decisions
 
@@ -215,6 +216,19 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
     `--context 1.2.3k`. *Not done:* moving `predict`'s data loading out of `cli.py`
     (the command is ~100 lines of orchestration; a `predict/service.py` would be the
     next step when a second client such as the daemon needs it).
+
+37. **"Prompter": the cheaper next move, not a prompt rewriter** (11a; five-agent review on
+    2026-11-10). Advice is the model's own what-if for the same task with one input
+    changed (fresh context, `/compact` at an *assumed* 20k summary, lower effort, another
+    model), ranked by predicted saving, ≥ 20%, at most 3; every message says "predicted",
+    and model advice says "cost only, not quality". *Rejected for now:* advice about
+    wording ("name the files"): from one user's observational history it's confounded by
+    task difficulty (needs ~700 turns or a randomized self-experiment, with a rule written
+    first); LLM rewriting via the mod: wording barely moves cost (98% is re-reading), it's
+    a crowded category, and it would send drafts to Anthropic before the user chose to
+    send. *Later, opt-in:* a warning before an expensive send that never blocks.
+    Additive to the `predict --json` contract (still v1); the old `new_chat` field stays
+    until a version bump.
 
 ## Findings from the author's real logs
 

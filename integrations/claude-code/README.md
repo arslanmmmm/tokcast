@@ -37,7 +37,9 @@ estimates before you send it:
   | `--model` | `$.session.model()`, reduced to opus/sonnet/haiku/fable | tokcast's default |
   | `--effort` | the last main-loop `turn.step` (the only event that carries it) | before the first turn: tokcast's default |
 
-  When a new chat would be clearly cheaper, the bubble adds a tip with that estimate.
+  When a cheaper next move exists (`/compact`, a new chat, lower effort, another model),
+  the bubble shows tokcast's top one as a tip, marked "(assumed)" where it leans on an
+  assumption.
 - **Usage limits.** "% used now" comes straight from Claude Code (`rateLimits`: the 5-hour
   and 7-day windows; there is no daily limit). What *this turn* would add needs tokcast's
   calibration (tokens → % of limit), learned from readings. The mod collects them itself:
@@ -84,7 +86,7 @@ The mod has four options (`/config`, or `pluginConfigs` in settings):
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 41 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 42 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 

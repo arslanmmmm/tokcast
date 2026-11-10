@@ -28,6 +28,7 @@ OUTPUT_PER_CALL = 450  # median output tokens per API call
 SPREAD_TOTAL = 0.9  # lognormal sigma: turns of the same kind vary a lot
 SPREAD_OUTPUT = 1.0
 NEW_CHAT_CONTEXT = 40_000  # system prompt + tools before the first message
+COMPACT_SUMMARY_TOKENS = 20_000  # assumed size of a /compact summary (no data on it yet)
 
 # Relative to sonnet at medium effort. "total" scales tokens processed (mostly more
 # calls); "output" scales tokens written (more calls *and* more thinking per call).

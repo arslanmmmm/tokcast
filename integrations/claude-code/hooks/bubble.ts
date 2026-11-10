@@ -26,6 +26,7 @@ export type Forecast = {
   weekly_readings?: number
   limit_assumed_plan?: string | null // the % leans on this plan's starting guess
   weekly_assumed_plan?: string | null
+  advice?: Array<{ message: string; assumed: boolean }> // ranked; absent before tokcast 0.2
 }
 
 // The % of each window already used, as Claude Code reports it live.
@@ -71,7 +72,7 @@ function contextLine(f: Forecast): string {
 }
 
 // Four or five short lines: the cost, the 5h and weekly limits, the basis, and
-// a hint when starting a new chat would be clearly cheaper.
+// the cheaper next move when there is one (tokcast's top advice).
 export function summarize(f: Forecast, now: UsedNow = {}): string[] {
   const e = f.estimates[0]
   if (!e) return ['tokcast returned no estimate.']
@@ -101,7 +102,11 @@ export function summarize(f: Forecast, now: UsedNow = {}): string[] {
       : `basis: ${e.n} of your ${e.group}`
 
   const lines = [cost, fiveHour, weekly, `${basis} · ${contextLine(f)}`]
-  if (f.new_chat) {
+  const top = f.advice?.[0]
+  if (top) {
+    lines.push(`tip: ${top.message}${top.assumed ? ' (assumed)' : ''}`)
+  } else if (f.new_chat) {
+    // older tokcast without advice[]
     lines.push(`tip: in a new chat this would be ~${tokens(f.new_chat.total.median)} tokens`)
   }
   return lines

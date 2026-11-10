@@ -4,6 +4,7 @@ This is the function front ends call (the CLI today, a browser extension later).
 needs only a table of past turns, so it works with an empty history too.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Protocol
 
@@ -12,6 +13,7 @@ import pandas as pd
 from tokcast.calibrate.mapping import Calibration, Reading
 from tokcast.features.build import CurrentConversation
 from tokcast.features.classify import Classification, classify
+from tokcast.predict import advice as advice_mod
 from tokcast.predict import priors
 from tokcast.predict.baseline import BaselinePredictor, Estimate, Query, Range
 from tokcast.predict.similar import similar_turns
@@ -66,6 +68,8 @@ class Forecast:
     # set when a % leans on a plan's starting guess (calibrate/plans.py): label it "assumed"
     limit_assumed_plan: str | None = None
     weekly_assumed_plan: str | None = None
+    # the cheaper next move, ranked by predicted saving (predict/advice.py)
+    advice: list[advice_mod.Advice] = field(default_factory=list)
 
 
 def _pct(calibration: Calibration, r: Range) -> tuple[float, float, float] | None:
@@ -74,6 +78,68 @@ def _pct(calibration: Calibration, r: Range) -> tuple[float, float, float] | Non
     if low is None or median is None or high is None:
         return None
     return (low, median, high)
+
+
+def _alternatives(
+    estimate: Callable[..., Estimate],
+    *,
+    model: str,
+    effort: str,
+    tokens: float,
+    fresh: float,
+    first: bool,
+) -> list[advice_mod.Alternative]:
+    """The same turn with one input changed: what the advice is chosen from."""
+    found = []
+    if not first:  # a fresh or compacted context only helps a conversation already going
+        found.append(
+            advice_mod.Alternative(
+                "new_chat",
+                estimate(model, effort, tokens=fresh, first=True),
+                "/clear",
+                "Start a new chat",
+                basis=f"same task with a fresh context (~{fresh / 1000:.0f}k tokens)",
+            )
+        )
+        compacted = fresh + priors.COMPACT_SUMMARY_TOKENS
+        if tokens > compacted:
+            found.append(
+                advice_mod.Alternative(
+                    "compact",
+                    estimate(model, effort, tokens=compacted, first=False),
+                    "/compact",
+                    "Compact the conversation first",
+                    basis=(
+                        f"assumed: a /compact summary of ~{priors.COMPACT_SUMMARY_TOKENS // 1000}k"
+                        " tokens on top of the fresh context"
+                    ),
+                    assumed=True,
+                )
+            )
+    for m, e in options_to_compare(model, effort)[1:]:  # the same turn, other settings
+        if m == model:
+            found.append(
+                advice_mod.Alternative(
+                    "effort",
+                    estimate(m, e, tokens=tokens, first=first),
+                    None,  # effort is set in Claude Code's model picker
+                    f"Use {e} effort",
+                    caveat=", if that's enough for this task",
+                    basis=f"{e} vs {effort} effort multiplier",
+                )
+            )
+        else:
+            found.append(
+                advice_mod.Alternative(
+                    "model",
+                    estimate(m, e, tokens=tokens, first=first),
+                    f"/model {m}",
+                    f"Use {m}",
+                    caveat=", if it can do this task (cost only, not quality)",
+                    basis=f"{m} at {e} effort vs {model} at {effort}",
+                )
+            )
+    return found
 
 
 def options_to_compare(model: str, effort: str) -> list[tuple[str, str]]:
@@ -143,6 +209,11 @@ def forecast(
     if weekly is not None and weekly.ready:
         weekly_pct = _pct(weekly, estimates[0].total)
 
+    alternatives = _alternatives(
+        estimate, model=model, effort=effort, tokens=tokens, fresh=fresh, first=first_turn
+    )
+    advice = advice_mod.rank(estimates[0], alternatives, calibration)
+
     return Forecast(
         weekly_pct=weekly_pct,
         weekly_readings=len(weekly.points) if weekly is not None else 0,
@@ -158,4 +229,5 @@ def forecast(
         history_turns=len(turns),
         similar=similar_turns(turns, prompt),
         new_chat=new_chat,
+        advice=advice,
     )

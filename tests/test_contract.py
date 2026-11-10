@@ -69,6 +69,7 @@ def test_samples_set_every_optional_field(synthetic_turns):
     ):
         assert shape[path] != ["null"], f"no sample sets {path}"
     assert "similar[]" in shape  # at least one similar past prompt
+    assert "advice[]" in shape  # at least one piece of advice
 
 
 def test_output_matches_the_committed_contract(synthetic_turns):

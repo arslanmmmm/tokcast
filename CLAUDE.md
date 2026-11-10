@@ -11,7 +11,7 @@ Progress, every key decision and its reason, and next steps are in
 
 ```bash
 uv sync                                   # Python 3.12 + dev tools + the ml extra
-uv run pytest                             # ~190 tests, ~40 s
+uv run pytest                             # ~197 tests, ~45 s
 uv run ruff check . && uv run ruff format --check .
 uv run mypy                               # type check src/ (CI runs it too)
 uv run pytest --cov                       # tests + the coverage ratchet (97%)

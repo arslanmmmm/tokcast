@@ -113,12 +113,11 @@ def render_forecast(f: Forecast, console: Console) -> None:
                 f" [dim]({s['model']}·{s['effort']}, {s['ts']:%b %d})[/]",
                 soft_wrap=True,
             )
-    if f.new_chat:
-        console.print(
-            f"\n[yellow]Tip:[/] in a new chat this would be ≈ "
-            f"{fmt_tokens(f.new_chat.total.median)} instead of "
-            f"{fmt_tokens(f.estimates[0].total.median)} (median)."
-        )
+    if f.advice:  # the cheaper next move (predict/advice.py); replaces the old new-chat tip
+        console.print("\n[bold]Cheaper next move[/] (predicted for the same task)")
+        for item in f.advice:
+            note = "  [dim](assumed)[/]" if item.assumed else ""
+            console.print(f"  [yellow]•[/] {escape(item.message)}{note}", soft_wrap=True)
     if f.history_turns == 0:
         console.print(
             "\n[yellow]No history yet[/]: these are built-in assumptions. "
