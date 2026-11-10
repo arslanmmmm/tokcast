@@ -173,8 +173,8 @@ class BaselinePredictor:
         df = turns.assign(phase=np.where(turns["first_turn"], FIRST, LATER))
         self.n_turns = len(df)
         context = df["context_tokens_before"].clip(lower=MIN_CONTEXT)
-        self.total.fit(df, np.log(df["total_tokens"] / context))
-        self.output.fit(df, np.log1p(df["output_tokens"]))
+        self.total.fit(df, pd.Series(np.log(df["total_tokens"] / context), index=df.index))
+        self.output.fit(df, pd.Series(np.log1p(df["output_tokens"]), index=df.index))
         return self
 
     def predict(self, q: Query) -> Estimate:

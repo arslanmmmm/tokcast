@@ -17,7 +17,10 @@ from tokcast.storage.migrations import DatabaseTooNew
 __all__ = ["DatabaseBusy", "DatabaseTooNew", "connect", "load_sql"]
 
 # DuckDB downloads missing extensions from the internet on demand; tokcast is local-only.
-OFFLINE = {"autoinstall_known_extensions": False, "autoload_known_extensions": False}
+OFFLINE: dict[str, str | bool | int | float | list[str]] = {
+    "autoinstall_known_extensions": False,
+    "autoload_known_extensions": False,
+}
 
 # DuckDB allows one writing process. An incremental ingest takes ~2 s, so wait a little
 # for the lock before giving up.

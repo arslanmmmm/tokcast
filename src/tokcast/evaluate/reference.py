@@ -4,11 +4,14 @@ A score only means something next to alternatives. Each method here implements t
 fit/predict interface as BaselinePredictor, so the backtest treats them identically.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
 from tokcast.predict import BaselinePredictor, Estimate, Query, Range
 from tokcast.predict.baseline import MIN_CONTEXT, QUANTILES
+from tokcast.predict.forecast import Method, Predictor
 
 
 def _range(values) -> Range:
@@ -96,22 +99,21 @@ class Baseline(BaselinePredictor):
     name = "tokcast baseline"
 
 
-class LinearQR:
-    name = "quantile regression (linear)"
+@dataclass(frozen=True)
+class _QuantileRegression:
+    """A named factory: scikit-learn is imported only when the method is built (tokcast[ml])."""
 
-    def __new__(cls):
+    name: str
+    kind: str
+
+    def __call__(self) -> Predictor:
         from tokcast.predict.qreg import QuantileRegressionPredictor
 
-        return QuantileRegressionPredictor("linear")
+        return QuantileRegressionPredictor(self.kind)
 
 
-class BoostedQR:
-    name = "quantile regression (boosted)"
-
-    def __new__(cls):
-        from tokcast.predict.qreg import QuantileRegressionPredictor
-
-        return QuantileRegressionPredictor("boosted")
+LinearQR = _QuantileRegression("quantile regression (linear)", "linear")
+BoostedQR = _QuantileRegression("quantile regression (boosted)", "boosted")
 
 
 def ml_available() -> bool:
@@ -123,10 +125,10 @@ def ml_available() -> bool:
     return True
 
 
-def all_methods() -> list:
+def all_methods() -> list[Method]:
     """Factories for every method to compare (the regression only if sklearn is installed).
 
     BoostedQR is left out by default: in the Milestone 6 comparison it was no more accurate
     than the linear version, under-covered (75% in an 80% range) and 4x slower to fit."""
-    methods = [GlobalMedian, SingleCall, ContextRereads, PriorsOnly, Baseline]
+    methods: list[Method] = [GlobalMedian, SingleCall, ContextRereads, PriorsOnly, Baseline]
     return methods + ([LinearQR] if ml_available() else [])

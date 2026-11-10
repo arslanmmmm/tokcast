@@ -7,7 +7,6 @@ model learn from the future (later turns of the same sessions, newer habits) and
 the scores look better than they would be in real use.
 """
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import pairwise
@@ -17,7 +16,8 @@ import pandas as pd
 
 from tokcast.evaluate.metrics import Scores, paired_difference, pinball_per_turn, score
 from tokcast.evaluate.reference import all_methods
-from tokcast.predict import Predictor, Query
+from tokcast.predict import Query
+from tokcast.predict.forecast import Method
 
 MIN_TURNS = 30  # below this, a backtest says more about noise than about the model
 BASELINE = "tokcast baseline"
@@ -66,14 +66,14 @@ def queries_for(test: pd.DataFrame) -> list[Query]:
     """What we would have known before each turn: its prompt, settings and context."""
     return [
         Query(
-            task_type=row.task_type,
-            model=row.model,
-            effort=row.effort,
-            first_turn=bool(row.first_turn),
-            context_tokens=float(row.context_tokens_before),
-            prompt_tokens=int(row.text_chars) // 4,
+            task_type=str(row["task_type"]),
+            model=str(row["model"]),
+            effort=str(row["effort"]),
+            first_turn=bool(row["first_turn"]),
+            context_tokens=float(row["context_tokens_before"]),
+            prompt_tokens=int(row["text_chars"]) // 4,
         )
-        for row in test.itertuples(index=False)
+        for row in test.to_dict("records")
     ]
 
 
@@ -83,7 +83,7 @@ def backtest(
     data: str,
     folds: int = 5,
     test_fraction: float = 0.5,
-    methods: list[Callable[[], Predictor]] | None = None,
+    methods: list[Method] | None = None,
 ) -> BacktestResult:
     """Score every method on the same walk-forward splits."""
     turns = turns[turns["ts"].notna()].sort_values(["ts", "turn_id"]).reset_index(drop=True)

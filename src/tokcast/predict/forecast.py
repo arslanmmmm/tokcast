@@ -4,7 +4,7 @@ This is the function front ends call (the CLI today, a browser extension later).
 needs only a table of past turns, so it works with an empty history too.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 import pandas as pd
@@ -13,7 +13,7 @@ from tokcast.calibrate.mapping import Calibration, Reading
 from tokcast.features.build import CurrentConversation
 from tokcast.features.classify import Classification, classify
 from tokcast.predict import priors
-from tokcast.predict.baseline import BaselinePredictor, Estimate, Query
+from tokcast.predict.baseline import BaselinePredictor, Estimate, Query, Range
 from tokcast.predict.similar import similar_turns
 
 CHARS_PER_TOKEN = 4  # rough size of the prompt itself; good enough next to the context
@@ -25,6 +25,15 @@ class Predictor(Protocol):
     def fit(self, turns: pd.DataFrame) -> "Predictor": ...
 
     def predict(self, q: Query) -> Estimate: ...
+
+
+class Method(Protocol):
+    """A predictor class as `tokcast eval` uses it: named, and built with no arguments."""
+
+    @property
+    def name(self) -> str: ...
+
+    def __call__(self) -> Predictor: ...
 
 
 @dataclass
@@ -57,6 +66,14 @@ class Forecast:
     # set when a % leans on a plan's starting guess (calibrate/plans.py): label it "assumed"
     limit_assumed_plan: str | None = None
     weekly_assumed_plan: str | None = None
+
+
+def _pct(calibration: Calibration, r: Range) -> tuple[float, float, float] | None:
+    """% of the limit for a range's low, median and high; None if it can't be computed."""
+    low, median, high = (calibration.pct_of_limit(v) for v in (r.low, r.median, r.high))
+    if low is None or median is None or high is None:
+        return None
+    return (low, median, high)
 
 
 def options_to_compare(model: str, effort: str) -> list[tuple[str, str]]:
@@ -117,15 +134,14 @@ def forecast(
         if alt.total.median < estimates[0].total.median * 0.8:
             new_chat = alt
 
-    if calibration is not None and calibration.ready:
-        for est in [*estimates, *([new_chat] if new_chat else [])]:
-            r = est.total
-            est.limit_pct = tuple(calibration.pct_of_limit(v) for v in (r.low, r.median, r.high))
+    if calibration is not None and calibration.ready:  # new objects, not edits in place
+        estimates = [replace(e, limit_pct=_pct(calibration, e.total)) for e in estimates]
+        if new_chat is not None:
+            new_chat = replace(new_chat, limit_pct=_pct(calibration, new_chat.total))
 
     weekly_pct = None
     if weekly is not None and weekly.ready:
-        r = estimates[0].total
-        weekly_pct = tuple(weekly.pct_of_limit(v) for v in (r.low, r.median, r.high))
+        weekly_pct = _pct(weekly, estimates[0].total)
 
     return Forecast(
         weekly_pct=weekly_pct,

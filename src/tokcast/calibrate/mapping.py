@@ -45,16 +45,16 @@ class Calibration:
 
     def pct_of_limit(self, total_tokens: float) -> float | None:
         """% of the window a turn with this many tokens processed would use (median k)."""
-        if not self.ready or not self.turn_weight:
+        if not self.ready or self.k is None or not self.turn_weight:
             return None
         return self.k * self.turn_weight * total_tokens / 1e6
 
 
 def fit(con: duckdb.DuckDBPyConnection, window: str = "5h") -> Calibration:
     rows = con.execute(load_sql("calibrate/points.sql"), {"window": window}).fetchall()
-    total_rows = con.execute(
+    (total_rows,) = con.execute(
         'SELECT count(*) FROM usage_snapshots WHERE "window" = ?', [window]
-    ).fetchone()[0]
+    ).fetchone() or (0,)
     cal = Calibration(window)
     ratios = []
     for _window, resets_at, used_pct, ts, source, weighted in rows:

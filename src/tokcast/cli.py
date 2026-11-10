@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 from dataclasses import asdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -402,6 +402,7 @@ def calibrate(
 
         if used is not None:
             now = cal.utcnow()
+            resets_at: datetime | None
             if resets_in:
                 resets_at = now + _parse_duration(resets_in)
             elif window == "5h":

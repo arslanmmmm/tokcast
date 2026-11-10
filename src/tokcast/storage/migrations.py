@@ -47,7 +47,10 @@ def latest() -> int:
 
 
 def current(con: duckdb.DuckDBPyConnection) -> int:
-    return con.execute("SELECT coalesce(max(version), 0) FROM schema_version").fetchone()[0]
+    (version,) = con.execute("SELECT coalesce(max(version), 0) FROM schema_version").fetchone() or (
+        0,
+    )
+    return int(version)
 
 
 def migrate(con: duckdb.DuckDBPyConnection) -> list[int]:

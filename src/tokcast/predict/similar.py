@@ -29,22 +29,22 @@ def similar_turns(
     if not query or turns.empty:
         return []
     scored = []
-    for row in turns.itertuples(index=False):
-        words = _words(row.text)
+    for row in turns.to_dict("records"):
+        words = _words(row["text"])
         if words:
             score = len(query & words) / len(query | words)
             if score >= min_score:
                 scored.append((score, row))
-    scored.sort(key=lambda pair: (-pair[0], -pair[1].ts.timestamp()))
+    scored.sort(key=lambda pair: (-pair[0], -pair[1]["ts"].timestamp()))
     return [
         {
-            "text": " ".join(row.text.split())[:80],
+            "text": " ".join(row["text"].split())[:80],
             "score": round(score, 2),
-            "ts": row.ts,
-            "model": row.model,
-            "effort": row.effort,
-            "total_tokens": int(row.total_tokens),
-            "output_tokens": int(row.output_tokens),
+            "ts": row["ts"],
+            "model": row["model"],
+            "effort": row["effort"],
+            "total_tokens": int(row["total_tokens"]),
+            "output_tokens": int(row["output_tokens"]),
         }
         for score, row in scored[:k]
     ]

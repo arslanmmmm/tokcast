@@ -510,6 +510,8 @@ def render_calibration(c: Calibration, console: Console) -> None:
             "collect them (see tokcast statusline --setup)."
         )
         return
+    if c.k is None:  # ready implies a k; this keeps the division safe if that changes
+        return
     per_pct = 1e6 / c.k
     typical = per_pct / c.turn_weight if c.turn_weight else None
     console.print(

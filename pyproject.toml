@@ -42,7 +42,10 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.1",
+    "pandas-stubs>=3.1.0.261029",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "ruff>=0.17.0",
 ]
 ml = [
@@ -67,3 +70,15 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 # Typer reads defaults like `typer.Option(...)` at call time; that's its intended API.
 extend-ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/tokcast"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+# These ship without type information.
+module = ["pyarrow.*", "sklearn.*"]
+ignore_missing_imports = true
