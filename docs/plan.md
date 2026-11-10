@@ -30,7 +30,8 @@ This file records what was built, the decisions behind it, and what's next.
 | A | Trust fixes: private files, offline tests, busy DB, atomic state, mod never stuck | ✅ | `519a7f9`..`b941fa4` |
 | 10a | Increments vs totals estimator: pre-registered backtest → keep totals | ✅ | `2d5e97f`, `abaae23` |
 | 10a-2 | Same with a rounding-aware interval, on readings after 2026-11-10 | ⏳ | |
-| 10b | Starting guess for % of limit per plan, used only before 3 own readings | ✅ | after `ef65db7` |
+| 10b | Starting guess for % of limit per plan, used only before 3 own readings | ✅ | `c911c9d` |
+| B1 | Versioned `predict --json` contract; numbered schema migrations | ✅ | `b63206f`, after |
 
 ## Key decisions
 
@@ -179,6 +180,20 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
     which would be circular anyway (fitted and tested on one user). Every such % says
     "assumed". *Rejected: shrinking calibrated users toward the prior (a model change
     that one user's data can't validate).*
+
+33. **`predict --json` is a versioned contract** (B1a). `schema_version` in the output;
+    its shape (field paths and JSON types, merged from samples that set every optional
+    field) committed in `tests/contracts/`; adding a field updates the file, removing,
+    renaming or retyping bumps the version. The mod's tests use a shared fixture that
+    Python CI checks against the contract, so the cross-language dependency is tested
+    even though CI can't run the mod. *Rejected: a JSON Schema library (a dependency for
+    one test) and hand-maintained TypeScript types alone (nothing would catch drift).*
+34. **Numbered schema migrations** (B1b). A `schema_version` table; `sql/migrations/NNN_*.sql`
+    applied once, in order, each in a transaction with its version row (a failure leaves
+    nothing half-done; DuckDB's DDL is transactional); a newer database is refused. The
+    old trailing `ALTER ... IF NOT EXISTS` became migration 001. *Not done: read-only
+    opens for `stats`/`eval`. A DuckDB writer process locks out all other processes, read-only
+    ones included, so they wouldn't help with the busy database; the lock wait (phase A) does.*
 
 ## Findings from the author's real logs
 

@@ -84,7 +84,7 @@ The mod has four options (`/config`, or `pluginConfigs` in settings):
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 39 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 41 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 

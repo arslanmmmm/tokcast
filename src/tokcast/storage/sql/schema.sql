@@ -1,4 +1,4 @@
--- tokcast storage schema.
+-- tokcast storage schema: the baseline. Later changes live in sql/migrations/.
 -- Data tables are append-only: rows are upserted by id and never deleted when they
 -- vanish from a log file (Claude Code rewrites and expires its logs). `source_file`
 -- records where a row was first seen. Every ingest is idempotent: running it twice
@@ -86,5 +86,5 @@ CREATE TABLE IF NOT EXISTS usage_snapshots (
     PRIMARY KEY ("window", resets_at, used_pct)
 );
 
--- Migrations for databases created by older tokcast versions. Each is idempotent.
-ALTER TABLE requests ADD COLUMN IF NOT EXISTS agent_id VARCHAR;
+-- Changes to this schema are numbered migrations in sql/migrations/ (storage/migrations.py),
+-- not edits to this file, which is the baseline every database starts from.

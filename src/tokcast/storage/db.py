@@ -11,6 +11,10 @@ from pathlib import Path
 import duckdb
 
 from tokcast import config, private
+from tokcast.storage import migrations
+from tokcast.storage.migrations import DatabaseTooNew
+
+__all__ = ["DatabaseBusy", "DatabaseTooNew", "connect", "load_sql"]
 
 # DuckDB downloads missing extensions from the internet on demand; tokcast is local-only.
 OFFLINE = {"autoinstall_known_extensions": False, "autoload_known_extensions": False}
@@ -49,7 +53,8 @@ def load_sql(name: str) -> str:
 def connect(path: Path | str, *, busy_wait: float = BUSY_WAIT_SECONDS) -> duckdb.DuckDBPyConnection:
     """Open (or create) the database and make sure the schema and views exist.
 
-    Raises DatabaseBusy when another process keeps the write lock for ``busy_wait`` s.
+    Raises DatabaseBusy when another process keeps the write lock for ``busy_wait`` s,
+    and DatabaseTooNew when a newer tokcast wrote it.
     """
     on_disk = str(path) != ":memory:"
     if on_disk:
@@ -58,5 +63,6 @@ def connect(path: Path | str, *, busy_wait: float = BUSY_WAIT_SECONDS) -> duckdb
     if on_disk:  # the file holds prompt text: owner-only, also for databases made by 0.1
         private.protect(Path(path), Path(f"{path}.wal"))
     con.execute(load_sql("schema.sql"))
+    migrations.migrate(con)
     con.execute(load_sql("views.sql"))
     return con

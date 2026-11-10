@@ -23,6 +23,12 @@ erDiagram
 | `prompts` | human prompt (a turn) | `prompt_id` | text (or only length and hash with `--no-text`), `kind` (`text`, `bash-input`, ...) |
 | `requests` | API call, deduplicated | `request_id` | token counts by type, model, effort, tools, `agent_id` for subagents |
 | `usage_snapshots` | usage-limit reading | (window, resets_at, %) | from the status line or `calibrate --used` |
+| `schema_version` | applied migration | `version` | which numbered migrations a database has had, and when |
+
+**Schema changes are numbered migrations.** `schema.sql` is the baseline; each change is a
+file `sql/migrations/NNN_name.sql`, applied once, in order, each in a transaction together
+with its `schema_version` row. A database written by a newer tokcast is refused rather
+than misread.
 
 **Loading is append-only.** Rows are upserted by id and never deleted when they disappear
 from a log file. Claude Code rewrites logs on resume and compact, and deletes them after

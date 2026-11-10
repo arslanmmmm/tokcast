@@ -11,7 +11,7 @@ Progress, every key decision and its reason, and next steps are in
 
 ```bash
 uv sync                                   # Python 3.12 + dev tools + the ml extra
-uv run pytest                             # ~144 tests, ~30 s
+uv run pytest                             # ~171 tests, ~35 s
 uv run ruff check . && uv run ruff format --check .
 uv run tokcast synth --out tokcast-demo   # synthetic data for trying things
 TOKCAST_HOME=tokcast-demo/db uv run tokcast ingest --path tokcast-demo/logs
@@ -30,6 +30,11 @@ Run commands from the repo root: `uv run` outside it silently uses Anaconda's Py
   one.
 - **SQL lives in `src/tokcast/storage/sql/**/*.sql`**, loaded with `db.load_sql`. Cast sums
   to `BIGINT` and decimal arithmetic to `DOUBLE`.
+- **Schema changes are migrations:** never edit tables in `schema.sql`; add
+  `storage/sql/migrations/NNN_name.sql` (it runs once, in a transaction).
+- **`predict --json` is a contract** (`predict/contract.py`, `tests/contracts/`): adding a
+  field means updating the contract file; removing, renaming or retyping one means bumping
+  `SCHEMA_VERSION`.
 - **Ingest is append-only:** upsert by id, never delete rows; token counts only grow.
 - **`cli.py` stays thin**, and heavy imports (pandas, duckdb, pyarrow) go inside commands.
   `capture.py` (the status line) is standard library only.

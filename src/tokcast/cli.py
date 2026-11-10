@@ -283,9 +283,9 @@ def _open_db():
 
     try:
         return db.connect(config.db_path())
-    except db.DatabaseBusy as busy:
-        console.print(f"[red]{escape(str(busy))}[/]")
-        raise typer.Exit(3) from busy
+    except (db.DatabaseBusy, db.DatabaseTooNew) as problem:
+        console.print(f"[red]{escape(str(problem))}[/]")
+        raise typer.Exit(3) from problem
 
 
 def _model_family(name: str) -> str:
