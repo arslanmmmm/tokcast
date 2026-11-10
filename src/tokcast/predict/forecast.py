@@ -54,6 +54,9 @@ class Forecast:
     # % of the 7-day limit for the requested option (low, median, high), once calibrated
     weekly_pct: tuple[float, float, float] | None = None
     weekly_readings: int = 0  # 7-day calibration readings so far
+    # set when a % leans on a plan's starting guess (calibrate/plans.py): label it "assumed"
+    limit_assumed_plan: str | None = None
+    weekly_assumed_plan: str | None = None
 
 
 def options_to_compare(model: str, effort: str) -> list[tuple[str, str]]:
@@ -127,6 +130,8 @@ def forecast(
     return Forecast(
         weekly_pct=weekly_pct,
         weekly_readings=len(weekly.points) if weekly is not None else 0,
+        limit_assumed_plan=calibration.assumed_plan if calibration is not None else None,
+        weekly_assumed_plan=weekly.assumed_plan if weekly is not None else None,
         limit_window=calibration.window if calibration is not None else None,
         limit_readings=len(calibration.points) if calibration is not None else 0,
         limit_now=reading,

@@ -27,7 +27,7 @@ const FACES: Record<Bubble['kind'], string> = {
   error: '(•︵•)',
 }
 
-type Config = { command: string[]; home: string; autoIngest: boolean }
+type Config = { command: string[]; home: string; autoIngest: boolean; plan: string }
 
 // DuckDB allows one writing process at a time, so this mod's tokcast calls run
 // one after another, never side by side.
@@ -77,6 +77,7 @@ async function forecast($: EngineInterface, cfg: Config, text: string): Promise<
     contextTokens: context.tokens,
     model: await $.session.model(),
     effort: (await read($, effort)) || undefined,
+    plan: cfg.plan,
   })
   // A reading that can't be saved must not cost the user their estimate.
   await recordReadings($, cfg, rateLimits).catch(() => undefined)
@@ -134,6 +135,7 @@ export const register: Register = (on, options) => {
     command: String(options.command ?? 'tokcast').split(/\s+/).filter(Boolean),
     home: String(options.tokcastHome ?? ''),
     autoIngest: options.autoIngest !== false,
+    plan: String(options.plan ?? 'none'),
   }
 
   // Restore the last show/hide choice. An estimate from before a reload is gone, so

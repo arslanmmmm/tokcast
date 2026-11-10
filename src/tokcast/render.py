@@ -257,6 +257,14 @@ def _limit_notes(f: Forecast, console: Console, show_limit: bool) -> None:
                 )
             )
         return
+    if f.limit_assumed_plan:
+        console.print(
+            Text(
+                f"% of limit is assumed: the {f.limit_assumed_plan} plan's starting guess "
+                f"(fitted on one user) until {MIN_POINTS} of your own readings exist.",
+                style="dim",
+            )
+        )
     if f.weekly_pct:
         weekly = _pct_range(f.weekly_pct)
         console.print(f"Weekly: this turn would use {weekly} of your 7-day limit.")

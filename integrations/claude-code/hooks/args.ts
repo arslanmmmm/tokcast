@@ -5,10 +5,12 @@ export type SessionFacts = {
   contextTokens?: number // the live context window; absent in a fresh session
   model?: string // e.g. "claude-opus-5-5"
   effort?: string // last effort seen on a model request; absent before the first turn
+  plan?: string // the user's Claude plan, for an assumed % before their own readings
 }
 
 const MODEL_FAMILY = /opus|sonnet|haiku|fable/
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
+const PLANS = new Set(['pro', 'max5x', 'max20x'])
 
 export function predictArgs(command: readonly string[], facts: SessionFacts): string[] {
   // "-" makes tokcast read the prompt from stdin, so no length or quoting limits.
@@ -22,6 +24,7 @@ export function predictArgs(command: readonly string[], facts: SessionFacts): st
   const family = facts.model?.toLowerCase().match(MODEL_FAMILY)?.[0]
   if (family) argv.push('--model', family)
   if (facts.effort && EFFORTS.has(facts.effort)) argv.push('--effort', facts.effort)
+  if (facts.plan && PLANS.has(facts.plan)) argv.push('--plan', facts.plan)
 
   return argv
 }

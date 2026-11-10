@@ -339,3 +339,12 @@ test('× cancels a running estimate', async ($, on) => {
 
   expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined()
 })
+
+test('the plan option reaches tokcast', { options: { plan: 'pro' } }, async ($, on) => {
+  const runs = engine(on, 'hello', OK)
+  const ui = await band($)
+
+  await ui.press({ key: 'estimate' })
+
+  expect(runs.at(-1)?.argv.slice(-2)).toEqual(['--plan', 'pro'])
+})

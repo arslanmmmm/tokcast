@@ -91,7 +91,7 @@ TOKCAST_HOME=tokcast-demo/db tokcast predict "fix the login bug"
 |---|---|
 | `tokcast ingest` | Loads Claude Code session logs into a local DuckDB file. Incremental and append-only: re-running adds only new data and never loses history, even when Claude Code rewrites or deletes old logs. |
 | `tokcast stats` | Tokens by model and effort, day and project, the most expensive sessions, and how cost grows with conversation length. Includes a data-quality check per Claude Code version. |
-| `tokcast predict "<prompt>"` | Predicted range for the next turn. Options: `--model`, `--effort`, `--context 120k` or `--continue`, `--no-compare`, `--json`, `-` for stdin. |
+| `tokcast predict "<prompt>"` | Predicted range for the next turn. Options: `--model`, `--effort`, `--context 120k` or `--continue`, `--plan pro\|max5x\|max20x` (an assumed % of limit before your own readings exist), `--no-compare`, `--json`, `-` for stdin. |
 | `tokcast eval` | Walk-forward backtest on your history against four simpler methods. `--synthetic 300` to try it on generated data, `--markdown` for a table. |
 | `tokcast calibrate --used 23` | Records the usage % from Claude's usage screen; after 3 readings, `predict` shows "% of 5h limit" (estimates). |
 | `tokcast statusline` | Optional Claude Code status-line command that records official usage readings automatically (Pro/Max). See `--setup`. |
@@ -236,8 +236,9 @@ small real histories yet. So the simpler baseline remains the default.
 - **Subagent support** follows community reports of the file layout; it isn't verified on
   real subagent logs yet.
 - **Claude Code only** for now.
-- **The mod's "+x% for this turn" needs 3 readings per window,** so a new user sees only
-  "% used now" at first. The weekly window moves slowly, so it can take days.
+- **The mod's "+x% for this turn" needs 3 readings per window** to be your own. Before
+  that, set your plan (`--plan` / the mod's `plan` option) for an **assumed** starting
+  guess, fitted on one Pro user and scaled for Max: a rough guide, labelled as such.
 - **The mod shares the space above the prompt with Claude Code's own boxes** (a survey,
   a question) and draws under them; its **hide** button shrinks it to its face.
 
@@ -280,11 +281,11 @@ A detailed comparison, including what users of these tools ask for, is in
 
 ```bash
 uv sync                                  # Python 3.12, dev tools and the ml extra
-uv run pytest                            # 144 tests, about 30 s
+uv run pytest                            # 162 tests, about 30 s
 uv run ruff check . && uv run ruff format --check .
 ```
 
-The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 36
+The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 39
 tests). They need the Claude Code binary, so CI doesn't run them yet.
 
 CI runs the Python checks on every push. Fixture logs in `tests/fixtures/` are handwritten, and

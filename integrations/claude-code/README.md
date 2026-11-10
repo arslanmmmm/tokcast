@@ -71,19 +71,20 @@ For one session only, while developing: `claude --plugin-dir integrations/claude
 (A session's hot-reload mods folder is tied to that session; when the app restarts the
 conversation as a new session, a mod loaded that way is gone. Installing avoids that.)
 
-The mod has three options (`/config`, or `pluginConfigs` in settings):
+The mod has four options (`/config`, or `pluginConfigs` in settings):
 
 | option | default | use |
 |---|---|---|
 | `command` | `tokcast` | how to run tokcast, e.g. `uv run --project /path/to/tokcast tokcast` |
 | `tokcastHome` | empty | a separate database, e.g. the synthetic demo's `tokcast-demo/db` (never auto-ingested) |
 | `autoIngest` | on | after each turn, save the usage reading and run `tokcast ingest` |
+| `plan` | none | `pro`, `max5x` or `max20x`: show an **assumed** % of your limits until 3 of your own readings exist |
 
 ## Develop
 
 ```bash
 claude plugin validate integrations/claude-code
-claude plugin test integrations/claude-code     # 36 tests, terminal and desktop surfaces
+claude plugin test integrations/claude-code     # 39 tests, terminal and desktop surfaces
 npx -p typescript tsc -p integrations/claude-code
 ```
 

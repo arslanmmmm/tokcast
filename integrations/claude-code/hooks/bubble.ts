@@ -19,6 +19,8 @@ export type Forecast = {
   limit_readings: number
   weekly_pct?: [number, number, number] | null // absent from tokcast before 0.2
   weekly_readings?: number
+  limit_assumed_plan?: string | null // the % leans on this plan's starting guess
+  weekly_assumed_plan?: string | null
 }
 
 // The % of each window already used, as Claude Code reports it live.
@@ -44,10 +46,14 @@ function limitLine(
   now: number | undefined,
   turn: [number, number, number] | null,
   readings: number,
+  assumedPlan: string | null = null,
 ): string {
   const used = now === undefined ? '' : `${pct(now)} used now`
+  const basis = assumedPlan
+    ? ` (assumed for ${assumedPlan}, ${readings}/${READINGS_NEEDED} own readings)`
+    : ''
   const adds = turn
-    ? `this turn ≈ +${pct(turn[1])} (${pct(turn[0])}–${pct(turn[2])})`
+    ? `this turn ≈ +${pct(turn[1])} (${pct(turn[0])}–${pct(turn[2])})${basis}`
     : `this turn: learning your limit (${readings}/${READINGS_NEEDED} readings)`
   return `${label}: ${used ? `${used} → ` : ''}${adds}`
 }
@@ -68,8 +74,20 @@ export function summarize(f: Forecast, now: UsedNow = {}): string[] {
   const { low, median, high } = e.total
   const cost = `~${tokens(median)} tokens (${tokens(low)}–${tokens(high)}) for a ${f.classification.task_type} turn`
 
-  const fiveHour = limitLine('5h limit', now.fiveHour, e.limit_pct, f.limit_readings)
-  const weekly = limitLine('weekly limit', now.sevenDay, f.weekly_pct ?? null, f.weekly_readings ?? 0)
+  const fiveHour = limitLine(
+    '5h limit',
+    now.fiveHour,
+    e.limit_pct,
+    f.limit_readings,
+    f.limit_assumed_plan ?? null,
+  )
+  const weekly = limitLine(
+    'weekly limit',
+    now.sevenDay,
+    f.weekly_pct ?? null,
+    f.weekly_readings ?? 0,
+    f.weekly_assumed_plan ?? null,
+  )
 
   // Every estimate states its basis; with no history it is an assumption.
   const basis =

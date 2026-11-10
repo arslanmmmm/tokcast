@@ -55,6 +55,16 @@ describe('summarize', () => {
     expect(weekly).toBe('weekly limit: this turn ≈ +0.5% (0.1%–2%)') // no live reading
   })
 
+  test('an assumed % says which plan it leans on and how many own readings exist', () => {
+    const f = {
+      ...forecast({ limit_pct: [1, 2, 5] }, 1),
+      limit_assumed_plan: 'pro',
+    }
+    expect(summarize(f, { fiveHour: 10 })[1]).toBe(
+      '5h limit: 10% used now → this turn ≈ +2% (1%–5%) (assumed for pro, 1/3 own readings)',
+    )
+  })
+
   test('an older tokcast without weekly fields still reads', () => {
     const { weekly_pct, weekly_readings, ...old } = forecast()
     expect(summarize(old as Forecast)[2]).toBe('weekly limit: this turn: learning your limit (0/3 readings)')

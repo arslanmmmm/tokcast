@@ -59,6 +59,22 @@ Each window is calibrated separately. Predictions show "% of 5h limit" and the w
 under 2% (the rounding of the percentage dominates) or was taken after the last ingested
 API call (its tokens aren't in the database yet; run `tokcast ingest`).
 
+## Before your own readings: a starting guess per plan
+
+Readings can't be backfilled, so a new install has none. With `--plan pro|max5x|max20x`
+(or the mod's `plan` option), tokcast starts from a guess instead:
+
+| window | Pro: % per million weighted tokens (P10 / median / P90) |
+|---|---|
+| 5-hour | 6.2 / 7.21 / 13.8 |
+| weekly | 1.05 / 1.43 / 2.99 |
+
+Fitted on 2026-11-10 on one Pro user's readings (110 and 54), including their claude.ai
+usage, so it errs high. Max 5x and Max 20x divide it by 5 and 20 (Anthropic's stated usage
+multiples; assumed for the weekly window too). The guess counts as 3 readings: your first
+readings blend in, and from your 3rd usable reading on, only your own calibration is
+used. Every such % is labelled "assumed".
+
 ## Known biases
 
 - **Usage outside this machine's Claude Code** (claude.ai chats, other computers) counts

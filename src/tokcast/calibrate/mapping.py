@@ -36,10 +36,12 @@ class Calibration:
     k: float | None = None
     k_high: float | None = None
     turn_weight: float | None = None  # typical weighted / total tokens of a turn
+    assumed_plan: str | None = None  # set while k leans on a plan's starting guess (plans.py)
 
     @property
     def ready(self) -> bool:
-        return len(self.points) >= MIN_POINTS and self.k is not None
+        has_basis = len(self.points) >= MIN_POINTS or self.assumed_plan is not None
+        return has_basis and self.k is not None
 
     def pct_of_limit(self, total_tokens: float) -> float | None:
         """% of the window a turn with this many tokens processed would use (median k)."""

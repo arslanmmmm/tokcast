@@ -30,7 +30,7 @@ This file records what was built, the decisions behind it, and what's next.
 | A | Trust fixes: private files, offline tests, busy DB, atomic state, mod never stuck | ✅ | `519a7f9`..`b941fa4` |
 | 10a | Increments vs totals estimator: pre-registered backtest → keep totals | ✅ | `2d5e97f`, `abaae23` |
 | 10a-2 | Same with a rounding-aware interval, on readings after 2026-11-10 | ⏳ | |
-| 10b | Starting guess for % of limit per plan, refined by readings (phase C) | ⏳ | |
+| 10b | Starting guess for % of limit per plan, used only before 3 own readings | ✅ | after `ef65db7` |
 
 ## Key decisions
 
@@ -168,6 +168,17 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
     or from a local clone, read from the folder itself so edits apply on
     `/reload-plugins`. tokcast prints the commands; it doesn't change Claude Code's
     settings itself.
+
+32. **A per-plan starting guess, only before 3 own readings** (milestone 10b). New users
+    otherwise see no % for hours, since readings can't be backfilled. Pro values are the
+    totals fit on the author's readings (5h 7.21, 7d 1.43 % per M weighted tokens; P10/P90
+    kept as the range); Max divides by Anthropic's stated multiples (5×, 20×). The guess
+    counts as 3 pseudo-readings blended with the user's own; from the 3rd usable reading
+    the user's own calibration is used *unchanged*. So 10b adds a labelled cold-start
+    feature without altering the validated path, and needs no backtest of its own,
+    which would be circular anyway (fitted and tested on one user). Every such % says
+    "assumed". *Rejected: shrinking calibrated users toward the prior (a model change
+    that one user's data can't validate).*
 
 ## Findings from the author's real logs
 

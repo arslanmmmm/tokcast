@@ -47,3 +47,11 @@ describe('usedNow', () => {
     expect(usedNow([{ kind: 'seven_day', percentUsed: 41 }])).toEqual({ fiveHour: undefined, sevenDay: 41 })
   })
 })
+
+describe('plan', () => {
+  test('passes a known plan, leaves out none or anything else', () => {
+    expect(predictArgs(['tokcast'], { plan: 'pro' })).toEqual([...BASE, '--plan', 'pro'])
+    expect(predictArgs(['tokcast'], { plan: 'none' })).toEqual(BASE)
+    expect(predictArgs(['tokcast'], { plan: 'team' })).toEqual(BASE)
+  })
+})

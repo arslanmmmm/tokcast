@@ -170,6 +170,11 @@ def predict(
     method: str = typer.Option(
         "baseline", "--method", help="baseline, or qreg (quantile regression; needs tokcast[ml])."
     ),
+    plan: str | None = typer.Option(
+        None,
+        "--plan",
+        help="pro, max5x or max20x: show an assumed % of limit before your own readings exist.",
+    ),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
 ) -> None:
     """Estimate how many tokens a prompt will use, before you send it."""
@@ -177,9 +182,14 @@ def predict(
 
     from tokcast import calibrate as cal
     from tokcast import render
+    from tokcast.calibrate import plans
     from tokcast.features.build import current_conversation, load_turns, new_chat_context
     from tokcast.predict import forecast, priors
 
+    if plan is not None and plan not in plans.PLAN_MULTIPLE:
+        names = ", ".join(plans.PLAN_MULTIPLE)
+        console.print(f"[red]Unknown plan:[/] {escape(plan)} (use {names})")
+        raise typer.Exit(1)
     predictor = _predictor(method)
     if prompt == "-":
         prompt = sys.stdin.read()
@@ -200,6 +210,9 @@ def predict(
             reading = cal.latest_reading(con, "5h", cal.utcnow())
     if turns is None:
         turns = pd.DataFrame()  # no history: predictions fall back to assumptions
+    if plan is not None:  # a starting guess until 3 own readings exist (labelled "assumed")
+        calibration = plans.with_plan_prior(calibration or cal.Calibration("5h"), plan)
+        weekly = plans.with_plan_prior(weekly or cal.Calibration("7d"), plan)
 
     model = _model_family(model or (conversation.model if conversation else "opus"))
     effort = (effort or (conversation.effort if conversation else None) or "medium").lower()
