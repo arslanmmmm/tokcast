@@ -281,7 +281,7 @@ A detailed comparison, including what users of these tools ask for, is in
 
 ```bash
 uv sync                                  # Python 3.12, dev tools and the ml extra
-uv run pytest --cov                      # 174 tests, coverage gate (97%), about 45 s
+uv run pytest --cov                      # 190 tests, coverage gate (97%), about 45 s
 uv run ruff check . && uv run ruff format --check .
 uv run mypy                              # type check
 ```
@@ -303,7 +303,9 @@ src/tokcast/
   capture.py   status-line capture (standard library only, fast)
   synth/       synthetic log generator
   stats/       usage report
-  cli.py       Typer commands; render.py: Rich output
+  cli.py       Typer commands (wiring only); parsing.py: what users type
+  render/      Rich output, one module per command
+  models.py    the one list of model families and efforts
 integrations/claude-code/   the tokcast-buddy mod (TypeScript)
 ```
 

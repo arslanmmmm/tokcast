@@ -11,7 +11,7 @@ Progress, every key decision and its reason, and next steps are in
 
 ```bash
 uv sync                                   # Python 3.12 + dev tools + the ml extra
-uv run pytest                             # ~174 tests, ~35 s
+uv run pytest                             # ~190 tests, ~40 s
 uv run ruff check . && uv run ruff format --check .
 uv run mypy                               # type check src/ (CI runs it too)
 uv run pytest --cov                       # tests + the coverage ratchet (97%)
@@ -38,7 +38,8 @@ Run commands from the repo root: `uv run` outside it silently uses Anaconda's Py
   field means updating the contract file; removing, renaming or retyping one means bumping
   `SCHEMA_VERSION`.
 - **Ingest is append-only:** upsert by id, never delete rows; token counts only grow.
-- **`cli.py` stays thin**, and heavy imports (pandas, duckdb, pyarrow) go inside commands.
+- **`cli.py` stays thin** (wiring only: output in `render/`, parsing in `parsing.py`, model
+  and effort names in `models.py`), and heavy imports (pandas, duckdb, pyarrow) go inside commands.
   `capture.py` (the status line) is standard library only.
 - **Escape user text** (prompts, project names) with `rich.markup.escape` before printing.
 - **Every estimate states its basis.** Assumptions are labelled "assumed".

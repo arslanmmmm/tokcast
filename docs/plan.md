@@ -1,7 +1,7 @@
 # Plan, progress and decisions
 
 **Status (2026-11-10): v0.1, milestone 9 (Claude Code mod), 10a, 10b, and phases A and B
-of the review roadmap done.** 174 Python tests (97.7% coverage) and 41 mod tests pass; CI
+of the review roadmap done.** 190 Python tests (97.7% coverage) and 41 mod tests pass; CI
 runs lint, mypy and the coverage gate. A six-agent review (below) set the roadmap: phases A–E.
 This file records what was built, the decisions behind it, and what's next.
 
@@ -32,7 +32,8 @@ This file records what was built, the decisions behind it, and what's next.
 | 10a-2 | Same with a rounding-aware interval, on readings after 2026-11-10 | ⏳ | |
 | 10b | Starting guess for % of limit per plan, used only before 3 own readings | ✅ | `c911c9d` |
 | B1 | Versioned `predict --json` contract; numbered schema migrations | ✅ | `b63206f`, `e0e544c` |
-| B2 | mypy (63 → 0 errors, none silenced), coverage ratchet 97%, render tests, in CI | ✅ | `c07cd53`, after |
+| B2 | mypy (63 → 0 errors, none silenced), coverage ratchet 97%, render tests, in CI | ✅ | `c07cd53`, `7a8b557` |
+| B3 | Ingest isolates failing files; one model/effort list; render/ and parsing.py split | ✅ | `3b71502`..`b14eb81` |
 
 ## Key decisions
 
@@ -204,6 +205,16 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
     rise, never quietly drop. The review's "only 4 CLI tests" was a miscount (54 CLI runs
     across test files); the real gap was untested *output*, now covered by
     `tests/test_render.py`, including the "wouldn't fit in what's left" warning.
+
+36. **Small structure fixes** (B3). Ingest records a file that fails to load
+    (`failed_files`), rolls it back, leaves it unmarked so the next run retries it, and
+    loads the rest; before, one bad file stopped the run. `tokcast/models.py` is the one
+    list of families and efforts: SQL gets the pattern filled in, and tests compare the
+    priors and the mod's TypeScript copy against it. `render.py` became a package (one
+    module per command) and parsing moved to `parsing.py`, which also fixed a crash on
+    `--context 1.2.3k`. *Not done:* moving `predict`'s data loading out of `cli.py`
+    (the command is ~100 lines of orchestration; a `predict/service.py` would be the
+    next step when a second client such as the daemon needs it).
 
 ## Findings from the author's real logs
 
