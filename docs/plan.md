@@ -225,6 +225,44 @@ with outside usage between them shows up as an outlier (detectable, or downweigh
 It is tested under the same decision rule as the starting guess, against the current
 totals method, on held-out later readings.
 
+### Milestone 10a: decision rule, written 2026-11-10 before any results
+
+**Question:** should "this turn ≈ +x%" use the *increments* estimator instead of the
+current *totals* one?
+
+- **Totals (current):** k = median over readings of `% used ÷ weighted tokens in the
+  window so far`, readings under 2% skipped.
+- **Increments (candidate):** pairs of consecutive readings in the same window (same
+  window type and `resets_at`): Δ% and Δweighted tokens. Pairs with Δtokens = 0 are
+  dropped (nothing local to learn from). k = ΣΔ% ÷ ΣΔtokens over the pairs (ratio of
+  sums: the least-squares fit through the origin, robust to the 1-point rounding of each
+  reading). Outside usage only ever adds %, so a pair whose ratio is over 3× the median
+  pair ratio is flagged and left out of the fit. Its 80% interval: the 10th and 90th
+  percentiles of the ratios of pairs with Δ% ≥ 2.
+
+**Backtest (forward by window):** windows are ordered by `resets_at`. Each window is
+predicted from readings of windows that *ended before it began* only, never splitting a
+window across train and test. A window is a test window once ≥ 3 earlier windows exist
+(5h) or ≥ 2 (7d). Prediction for each test pair: k × Δtokens; error: |predicted − actual
+Δ%| in percentage points, over every test pair with Δtokens > 0 (outside usage included:
+it's what users see). 5h and 7d are evaluated separately, never pooled.
+
+**Rule:** adopt increments for a window type only if both hold:
+1. the 95% interval of `median abs error (totals) − median abs error (increments)`,
+   from a block bootstrap that resamples *test windows* (2,000 draws, seed 10), is
+   entirely above 0; and
+2. the increments' 80% interval covers ≥ 65% of the held-out pairs (it must not just be
+   sharper by being overconfident).
+
+Otherwise keep totals. **"No decision" is an acceptable result**, likely for 7d (4 weeks
+of data). Report: n of test windows and pairs, both medians, the interval, coverage, and
+relative error as a secondary number.
+
+**Disclosed before running:** the first 17 readings (Oct 15 and 19) were looked at by hand
+when outside usage was found; the other ~90% have not been. The per-plan starting guess
+is milestone 10b and isn't part of this rule; it fits on this one user, so it can only be
+labelled "assumed", never validated here.
+
 ### First real check of the mod (2026-10-15)
 
 The draft "go for next milestone" was estimated by 9a at ~2.9M tokens (364k–7.4M); the
