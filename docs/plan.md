@@ -28,7 +28,9 @@ This file records what was built, the decisions behind it, and what's next.
 | 9e | Mod shares the band with Claude Code's boxes; hide/show | ✅ | `f82d119` |
 | 9f | Mod installable (marketplace file); `/tokcast` removed | ✅ | after `f82d119` |
 | A | Trust fixes: private files, offline tests, busy DB, atomic state, mod never stuck | ✅ | `519a7f9`..`b941fa4` |
-| 10 | Starting guess for % of limit per plan, refined by readings (phase C) | ⏳ | |
+| 10a | Increments vs totals estimator: pre-registered backtest → keep totals | ✅ | `2d5e97f`, `abaae23` |
+| 10a-2 | Same with a rounding-aware interval, on readings after 2026-11-10 | ⏳ | |
+| 10b | Starting guess for % of limit per plan, refined by readings (phase C) | ⏳ | |
 
 ## Key decisions
 
@@ -262,6 +264,34 @@ relative error as a secondary number.
 when outside usage was found; the other ~90% have not been. The per-plan starting guess
 is milestone 10b and isn't part of this rule; it fits on this one user, so it can only be
 labelled "assumed", never validated here.
+
+**Result (2026-11-10, run once on 108 readings for 5h and 53 for 7d): keep totals.**
+
+| | 5-hour | weekly |
+|---|---|---|
+| test windows / pairs | 11 / 80 | 1 / 29 |
+| median abs error, totals | 0.73 pts | 0.94 pts |
+| median abs error, increments | 0.61 pts | 0.81 pts |
+| improvement, 95% (window bootstrap) | +0.01 to +0.15 | +0.13 (one window: no interval) |
+| increments 80% interval coverage | 56% (needs ≥ 65%) | 34% |
+| relative error, totals / increments | 48% / 44% | 83% / 60% |
+
+- 5h: increments are more accurate (condition 1 holds) but their 80% interval is
+  overconfident (condition 2 fails), so the rule keeps totals.
+- 7d: one test window only, so the bootstrap has nothing to resample: effectively no
+  decision, as anticipated.
+
+**Diagnosis, not tested yet:** readings are whole percents, so each Δ% carries up to
+±1 point of rounding, and most pairs rise by 0–2 points. The interval (pair-ratio
+percentiles) ignores that. Widening it now and re-running would tune on the test data.
+
+### Milestone 10a-2: decision rule, written 2026-11-10 before any data it will judge
+
+Same rule, estimators and backtest as 10a, with one change: the increments' interval
+for a test pair is `[low × Δtokens − 1, high × Δtokens + 1]` points (the ±1 point
+rounding of readings). Judged **only on test windows whose first reading is after
+2026-11-10** (training may use anything earlier, as before). Run when ≥ 8 new 5h test
+windows exist; 7d when ≥ 3 new weekly windows exist. Until then: totals stay.
 
 ### First real check of the mod (2026-10-15)
 
