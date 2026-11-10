@@ -13,6 +13,7 @@ and `tokcast calibrate` load the file later (see calibrate/snapshots.py).
 """
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,7 +65,7 @@ def record_changed(data_dir: Path, snapshots: list[Snapshot]) -> int:
     private.ensure_dir(data_dir, tighten_existing=config.uses_default_data_dir())
     state_path = data_dir / STATE_FILE
     try:
-        state = json.loads(state_path.read_text())
+        state = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         state = {}
     new = [s for s in snapshots if state.get(s.window) != [s.resets_at.isoformat(), s.used_pct]]
@@ -75,9 +76,20 @@ def record_changed(data_dir: Path, snapshots: list[Snapshot]) -> int:
             fh.write(json.dumps(asdict(s), default=str) + "\n")
     for s in new:
         state[s.window] = [s.resets_at.isoformat(), s.used_pct]
-    state_path.write_text(json.dumps(state))
+    _write_atomically(state_path, json.dumps(state))
     private.protect(data_dir / SNAPSHOT_FILE, state_path)
     return len(new)
+
+
+def _write_atomically(path: Path, text: str) -> None:
+    """Write to a temporary file, then swap it in: readers see the old or the new file,
+    never half of one (several Claude Code sessions run the status line at once)."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def statusline_text(data: dict) -> str:
