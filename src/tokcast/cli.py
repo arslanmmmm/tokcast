@@ -118,8 +118,8 @@ def ingest(
     if readings:
         table.add_row("Usage-limit readings", str(readings))
     console.print(table)
-    for path, reason in report.failed_files:
-        console.print(f"[red]Not loaded:[/] {escape(path)}: {escape(reason)}", soft_wrap=True)
+    for failed, reason in report.failed_files:
+        console.print(f"[red]Not loaded:[/] {escape(failed)}: {escape(reason)}", soft_wrap=True)
     # soft_wrap: let the terminal wrap long paths itself instead of Rich splitting them.
     console.print(f"[dim]Database: {config.db_path()}[/]", soft_wrap=True)
 
