@@ -33,6 +33,9 @@ class IngestReport:
     requests_after: int = 0
     errors: int = 0  # malformed lines found in the files parsed this run
     error_files: list[str] = field(default_factory=list)
+    # files that couldn't be read or loaded: (path, reason). Rolled back, not marked as
+    # ingested, so the next run tries them again.
+    failed_files: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def new_prompts(self) -> int:
@@ -71,8 +74,13 @@ def ingest(
         if not full and known.get(str(path)) == state:
             report.files_skipped += 1
             continue
-        parsed = source.parse_file(path, store_text=store_text)
-        _load_file(con, parsed, size=state[0], mtime_ns=state[1])
+        try:
+            parsed = source.parse_file(path, store_text=store_text)
+            _load_file(con, parsed, size=state[0], mtime_ns=state[1])
+        except (OSError, duckdb.Error) as error:  # one bad file mustn't stop the others
+            reason = str(error).splitlines()[0] if str(error) else type(error).__name__
+            report.failed_files.append((str(path), reason))
+            continue
         report.files_parsed += 1
         if parsed.errors:
             report.errors += len(parsed.errors)

@@ -110,9 +110,16 @@ def ingest(
     table.add_row("API requests", f"{report.requests_after}  [green](+{report.new_requests})[/]")
     if report.errors:
         table.add_row("Malformed lines", f"[yellow]{report.errors}[/] (skipped, see ingest_errors)")
+    if report.failed_files:
+        table.add_row(
+            "Files not loaded",
+            f"[red]{len(report.failed_files)}[/] (rolled back; retried on the next ingest)",
+        )
     if readings:
         table.add_row("Usage-limit readings", str(readings))
     console.print(table)
+    for path, reason in report.failed_files:
+        console.print(f"[red]Not loaded:[/] {escape(path)}: {escape(reason)}", soft_wrap=True)
     # soft_wrap: let the terminal wrap long paths itself instead of Rich splitting them.
     console.print(f"[dim]Database: {config.db_path()}[/]", soft_wrap=True)
 

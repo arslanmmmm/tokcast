@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 from tokcast.ingest import pipeline
 from tokcast.ingest.sources import ClaudeCodeSource
 
@@ -129,19 +127,34 @@ def test_no_text_option_stores_no_prompt_text(con, logs_dir):
     assert con.execute("SELECT count(*) FROM prompts WHERE text IS NOT NULL").fetchone()[0] == 0
 
 
-def test_failed_load_leaves_no_partial_rows(con, logs_dir, monkeypatch):
+def test_a_file_that_fails_to_load_is_rolled_back_and_the_rest_still_load(
+    con, logs_dir, monkeypatch
+):
     real_parse = SOURCE.parse_file
+    files = sorted(SOURCE.discover(logs_dir))
+    bad = files[0]
 
     def corrupt(path, **kwargs):
         parsed = real_parse(path, **kwargs)
-        parsed.requests[0].session_id = None  # violates NOT NULL -> insert fails
+        if path == bad:
+            parsed.requests[0].session_id = None  # violates NOT NULL -> the insert fails
         return parsed
 
     monkeypatch.setattr(SOURCE, "parse_file", corrupt)
-    with pytest.raises(Exception):  # noqa: B017 - any DB error is fine here
-        pipeline.ingest(con, SOURCE, logs_dir)
-    assert count(con, "prompts") == 0  # the transaction was rolled back
-    assert count(con, "ingested_files") == 0
+    report = pipeline.ingest(con, SOURCE, logs_dir)
+
+    assert [path for path, _ in report.failed_files] == [str(bad)]
+    assert report.files_parsed == len(files) - 1  # the others loaded
+    loaded = {p for (p,) in con.execute("SELECT path FROM ingested_files").fetchall()}
+    assert str(bad) not in loaded  # not marked done: the next run retries it
+    assert (
+        con.execute("SELECT count(*) FROM requests WHERE source_file = ?", [str(bad)]).fetchone()[0]
+        == 0
+    )  # and nothing half-loaded
+
+    monkeypatch.setattr(SOURCE, "parse_file", real_parse)
+    retry = pipeline.ingest(con, SOURCE, logs_dir)
+    assert retry.failed_files == [] and retry.files_parsed == 1
 
 
 def test_turn_totals_are_plain_64bit_integers(con, logs_dir):
