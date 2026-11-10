@@ -7,23 +7,22 @@ the CLI makes it testable without a terminal and reusable from other front ends
 """
 
 import json
-import re
 import shlex
 import shutil
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import asdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 from rich.console import Console
 from rich.markup import escape
-from rich.table import Table
 
-from tokcast import __version__, config, models
+from tokcast import __version__, config, models, parsing
 from tokcast.synth import generator as synth_gen  # standard library only: cheap to import
 
 # Heavy libraries (pandas, DuckDB, pyarrow, numpy) are imported inside the commands that
@@ -100,28 +99,9 @@ def ingest(
         report = pipeline.ingest(con, ClaudeCodeSource(), root, store_text=not no_text, full=full)
         readings = load_file(con, config.data_dir())  # captured by `tokcast statusline`
 
-    table = Table(title="Ingest summary", show_header=False, box=None)
-    table.add_column(no_wrap=True)  # labels stay on one line in narrow terminals
-    table.add_column(no_wrap=True)
-    table.add_row("Log files found", str(report.files_seen))
-    table.add_row("  read (new or changed)", str(report.files_parsed))
-    table.add_row("  skipped (unchanged)", str(report.files_skipped))
-    table.add_row("Prompts (turns)", f"{report.prompts_after}  [green](+{report.new_prompts})[/]")
-    table.add_row("API requests", f"{report.requests_after}  [green](+{report.new_requests})[/]")
-    if report.errors:
-        table.add_row("Malformed lines", f"[yellow]{report.errors}[/] (skipped, see ingest_errors)")
-    if report.failed_files:
-        table.add_row(
-            "Files not loaded",
-            f"[red]{len(report.failed_files)}[/] (rolled back; retried on the next ingest)",
-        )
-    if readings:
-        table.add_row("Usage-limit readings", str(readings))
-    console.print(table)
-    for failed, reason in report.failed_files:
-        console.print(f"[red]Not loaded:[/] {escape(failed)}: {escape(reason)}", soft_wrap=True)
-    # soft_wrap: let the terminal wrap long paths itself instead of Rich splitting them.
-    console.print(f"[dim]Database: {config.db_path()}[/]", soft_wrap=True)
+    from tokcast import render
+
+    render.render_ingest(report, readings, config.db_path(), console)
 
 
 @app.command()
@@ -238,7 +218,7 @@ def predict(
             f"last conversation, {conversation.ts:%b %d %H:%M} UTC",
         )
     elif context:
-        mode, tokens, note = "given", _parse_tokens(context), "from --context"
+        mode, tokens, note = "given", _parsed(parsing.tokens, context), "from --context"
     else:
         mode, tokens = "new chat", None
         note = f"median of your {fresh_n} first turns" if fresh_n else "built-in assumption"
@@ -305,23 +285,13 @@ def _model_family(name: str) -> str:
     raise typer.Exit(1)
 
 
-def _parse_duration(text: str) -> timedelta:
-    """'2h10m' -> 2 hours 10 minutes. Days, hours and minutes, in that order."""
-    match = re.fullmatch(r"\s*(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*", text.lower())
-    if not match or not any(match.groups()):
-        console.print(f"[red]Can't read duration:[/] {text} (try 2h10m or 3d4h)")
-        raise typer.Exit(1)
-    days, hours, minutes = (int(g or 0) for g in match.groups())
-    return timedelta(days=days, hours=hours, minutes=minutes)
-
-
-def _parse_tokens(text: str) -> float:
-    """'120k' -> 120000, '1.5M' -> 1500000, '50000' -> 50000."""
-    match = re.fullmatch(r"\s*([\d.]+)\s*([km]?)\s*", text.lower())
-    if not match:
-        console.print(f"[red]Can't read token count:[/] {text} (try 120k or 1.5M)")
-        raise typer.Exit(1)
-    return float(match.group(1)) * {"": 1, "k": 1e3, "m": 1e6}[match.group(2)]
+def _parsed[T](parse: Callable[[str], T], text: str) -> T:
+    """Run a parser from tokcast.parsing; a typo becomes a one-line message, not a traceback."""
+    try:
+        return parse(text)
+    except ValueError as error:
+        console.print(f"[red]{escape(str(error))}[/]")
+        raise typer.Exit(1) from error
 
 
 @app.command("eval")
@@ -410,7 +380,7 @@ def calibrate(
             now = cal.utcnow()
             resets_at: datetime | None
             if resets_in:
-                resets_at = now + _parse_duration(resets_in)
+                resets_at = now + _parsed(parsing.duration, resets_in)
             elif window == "5h":
                 resets_at = cal.infer_window_end(con, now)
             else:

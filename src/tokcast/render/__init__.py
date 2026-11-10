@@ -6,6 +6,7 @@ from tokcast.render.calibrate import render_calibration, render_statusline_setup
 from tokcast.render.common import fmt_tokens
 from tokcast.render.evaluate import backtest_markdown, render_backtest, render_limit_backtest
 from tokcast.render.forecast import render_forecast
+from tokcast.render.ingest import render_ingest
 from tokcast.render.stats import render_stats
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "render_backtest",
     "render_calibration",
     "render_forecast",
+    "render_ingest",
     "render_limit_backtest",
     "render_stats",
     "render_statusline_setup",
