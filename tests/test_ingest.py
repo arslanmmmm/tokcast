@@ -1,5 +1,4 @@
 import json
-import socket
 
 import pytest
 
@@ -128,15 +127,6 @@ def test_turns_view_aggregates_each_turn(con, logs_dir):
 def test_no_text_option_stores_no_prompt_text(con, logs_dir):
     pipeline.ingest(con, SOURCE, logs_dir, store_text=False)
     assert con.execute("SELECT count(*) FROM prompts WHERE text IS NOT NULL").fetchone()[0] == 0
-
-
-def test_ingest_makes_no_network_calls(con, logs_dir, monkeypatch):
-    def refuse(*args, **kwargs):
-        raise AssertionError("tokcast must not open network connections")
-
-    monkeypatch.setattr(socket, "socket", refuse)
-    monkeypatch.setattr(socket, "create_connection", refuse)
-    pipeline.ingest(con, SOURCE, logs_dir)
 
 
 def test_failed_load_leaves_no_partial_rows(con, logs_dir, monkeypatch):

@@ -206,8 +206,9 @@ small real histories yet. So the simpler baseline remains the default.
 
 ## Privacy
 
-- **Nothing leaves your machine.** No network calls, no telemetry, no API key. A test runs
-  the full ingest with network sockets disabled.
+- **Nothing leaves your machine.** No network calls, no telemetry, no API key. Every test
+  runs with network sockets blocked, a test fails if any module imports networking code,
+  and DuckDB's automatic extension downloads are switched off.
 - Logs are only read. tokcast writes to its own database
   (`~/.local/share/tokcast/tokcast.duckdb`, or `$TOKCAST_HOME`).
 - Prompt text is stored locally, so prompts can be re-classified when the rules improve.

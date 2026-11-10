@@ -22,7 +22,7 @@ Run commands from the repo root: `uv run` outside it silently uses Anaconda's Py
 ## Conventions
 
 - **Privacy first:**
-  - no network calls (a test enforces it)
+  - no network calls (every test runs with sockets blocked; tests/test_offline.py)
   - never commit real logs or databases
   - README and docs examples use synthetic data only
   - never edit the user's `~/.claude/settings.json`; print snippets instead

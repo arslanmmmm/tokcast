@@ -1,4 +1,5 @@
 import shutil
+import socket
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,17 @@ from tokcast.storage import db
 from tokcast.synth import generate
 
 FIXTURES = Path(__file__).parent / "fixtures" / "claude_code"
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """tokcast is local-only: any test that opens a network connection fails."""
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("tokcast must not open network connections")
+
+    monkeypatch.setattr(socket, "socket", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
 
 
 @pytest.fixture

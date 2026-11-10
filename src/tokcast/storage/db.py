@@ -11,6 +11,9 @@ import duckdb
 
 from tokcast import config, private
 
+# DuckDB downloads missing extensions from the internet on demand; tokcast is local-only.
+OFFLINE = {"autoinstall_known_extensions": False, "autoload_known_extensions": False}
+
 
 def load_sql(name: str) -> str:
     """Read a .sql file shipped in the package, e.g. ``"schema.sql"``, ``"stats/by_day.sql"``."""
@@ -22,7 +25,7 @@ def connect(path: Path | str) -> duckdb.DuckDBPyConnection:
     on_disk = str(path) != ":memory:"
     if on_disk:
         private.ensure_dir(Path(path).parent, tighten_existing=config.uses_default_data_dir())
-    con = duckdb.connect(str(path))
+    con = duckdb.connect(str(path), config=OFFLINE)
     if on_disk:  # the file holds prompt text: owner-only, also for databases made by 0.1
         private.protect(Path(path), Path(f"{path}.wal"))
     con.execute(load_sql("schema.sql"))
