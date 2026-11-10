@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tokcast import config, private
+
 SNAPSHOT_FILE = "usage_snapshots.jsonl"
 STATE_FILE = "statusline_state.json"
 WINDOWS = {"five_hour": "5h", "seven_day": "7d"}
@@ -59,7 +61,7 @@ def record_changed(data_dir: Path, snapshots: list[Snapshot]) -> int:
     """Append readings that differ from the last ones recorded. Returns how many."""
     if not snapshots:
         return 0
-    data_dir.mkdir(parents=True, exist_ok=True)
+    private.ensure_dir(data_dir, tighten_existing=config.uses_default_data_dir())
     state_path = data_dir / STATE_FILE
     try:
         state = json.loads(state_path.read_text())
@@ -74,6 +76,7 @@ def record_changed(data_dir: Path, snapshots: list[Snapshot]) -> int:
     for s in new:
         state[s.window] = [s.resets_at.isoformat(), s.used_pct]
     state_path.write_text(json.dumps(state))
+    private.protect(data_dir / SNAPSHOT_FILE, state_path)
     return len(new)
 
 
