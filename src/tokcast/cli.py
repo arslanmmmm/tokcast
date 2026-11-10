@@ -363,6 +363,9 @@ def calibrate(
     resets_in: str | None = typer.Option(
         None, "--resets-in", help="Time until the window resets, as Claude shows it: 2h10m."
     ),
+    backtest: bool = typer.Option(
+        False, "--backtest", help="Compare the totals and increments estimators on your readings."
+    ),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
 ) -> None:
     """Teach tokcast your tokens -> "% of usage limit" mapping (estimates, clearly labelled)."""
@@ -397,7 +400,18 @@ def calibrate(
                 )
                 raise typer.Exit(1)
             cal.save(con, [cal.Snapshot(window, resets_at, used, now, "manual")])
+        if backtest:
+            from tokcast.evaluate import limits
+
+            checks = [limits.backtest(limits.load_points(con, w), w) for w in WINDOW_LENGTH]
         result = cal.fit(con, window)
+
+    if backtest:
+        if as_json:
+            print(json.dumps([asdict(c) for c in checks], default=str, indent=2))
+        else:
+            render.render_limit_backtest(checks, console)
+        return
 
     if as_json:
         print(json.dumps(asdict(result) | {"ready": result.ready}, default=str, indent=2))

@@ -517,3 +517,42 @@ def render_calibration(c: Calibration, console: Console) -> None:
             style="dim",
         )
     )
+
+
+def _verdict(adopt: bool | None) -> str:
+    if adopt is None:
+        return "no decision (too few windows)"
+    return "[green]adopt increments[/]" if adopt else "keep totals"
+
+
+def render_limit_backtest(results: list, console: Console) -> None:
+    """Totals vs increments for each limit window, judged by the rule in docs/plan.md (10a)."""
+    t = _table(
+        "% of limit calibration: forward backtest by window (rule: docs/plan.md, 10a)",
+        *("limit", "test windows", "pairs", "error totals", "error increments"),
+        *("improvement, 95%", "80% coverage", "decision"),
+        right=("test windows", "pairs", "error totals", "error increments", "80% coverage"),
+    )
+    for r in results:
+        label = {"5h": "5-hour", "7d": "weekly"}[r.window]
+        if r.test_pairs == 0:
+            t.add_row(label, "0", "0", "-", "-", "-", "-", _verdict(None))
+            continue
+        t.add_row(
+            label,
+            str(r.test_windows),
+            str(r.test_pairs),
+            f"{r.mae_totals:.2f} pts",
+            f"{r.mae_increments:.2f} pts",
+            f"{r.diff_low:+.2f} to {r.diff_high:+.2f} pts",
+            f"{r.coverage:.0%}",
+            _verdict(r.adopt),
+        )
+    console.print(t)
+    console.print(
+        Text(
+            "error = median |predicted - actual| rise in % between two readings. Each window "
+            "is predicted only from windows that ended before it began.",
+            style="dim",
+        )
+    )

@@ -232,3 +232,13 @@ def test_cli_predict_shows_limit_after_three_readings(home, logs_dir):
     assert data["limit_window"] == "5h" and data["limit_readings"] == 3
     assert data["estimates"][0]["limit_pct"] is not None
     assert (data["weekly_pct"], data["weekly_readings"]) == (None, 0)  # no 7d readings yet
+
+
+def test_cli_backtest_without_enough_windows_is_no_decision(home, logs_dir):
+    runner.invoke(app, ["ingest", "--path", str(logs_dir)])
+
+    result = runner.invoke(app, ["calibrate", "--backtest", "--json"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert [(d["window"], d["adopt"]) for d in data] == [("5h", None), ("7d", None)]
