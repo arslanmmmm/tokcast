@@ -2,6 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { firstLine, parse, summarize, tokens } from '../hooks/bubble'
 import type { Forecast } from '../hooks/bubble'
+import { FORECAST_V1 } from './fixtures/forecast'
 
 // Shaped like real `tokcast predict --json` output on synthetic data.
 function forecast(over: Partial<Forecast['estimates'][0]> = {}, readings = 0): Forecast {
@@ -81,6 +82,18 @@ describe('summarize', () => {
 })
 
 describe('parse', () => {
+  test('output from a newer tokcast asks for a mod update instead of misreading it', () => {
+    const { lines, ok } = parse(JSON.stringify({ schema_version: 2, estimates: [] }))
+    expect(ok).toBe(false)
+    expect(lines[0]).toMatch(/format v2.*reads v1.*update/)
+  })
+
+  test('the shared v1 fixture reads cleanly', () => {
+    const { lines, ok } = parse(JSON.stringify(FORECAST_V1))
+    expect(ok).toBe(true)
+    expect(lines[0]).toMatch(/^~360k tokens/)
+  })
+
   test('bad output becomes a message, not a crash', () => {
     expect(parse('not json')).toEqual({ lines: ["Couldn't read tokcast's output."], ok: false })
   })

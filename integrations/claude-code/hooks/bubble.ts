@@ -10,7 +10,12 @@ type Estimate = {
   limit_pct: [number, number, number] | null
 }
 
+// The `predict --json` format this mod reads (tokcast/predict/contract.py). A newer
+// major format may have renamed or removed fields, so it isn't guessed at.
+export const SCHEMA_VERSION = 1
+
 export type Forecast = {
+  schema_version?: number // absent before tokcast 0.2: read as v1
   classification: { task_type: string }
   context: { mode: string; tokens: number; note: string } // mode: "new chat" or "given"
   estimates: Estimate[]
@@ -105,7 +110,17 @@ export function summarize(f: Forecast, now: UsedNow = {}): string[] {
 // Parses stdout; a problem becomes a readable message instead of a crash.
 export function parse(stdout: string, now: UsedNow = {}): { lines: string[]; ok: boolean } {
   try {
-    return { lines: summarize(JSON.parse(stdout) as Forecast, now), ok: true }
+    const forecast = JSON.parse(stdout) as Forecast
+    const version = forecast.schema_version ?? 1
+    if (version > SCHEMA_VERSION) {
+      return {
+        lines: [
+          `tokcast writes format v${version}; this mod reads v${SCHEMA_VERSION}. Please update the mod.`,
+        ],
+        ok: false,
+      }
+    }
+    return { lines: summarize(forecast, now), ok: true }
   } catch {
     return { lines: ["Couldn't read tokcast's output."], ok: false }
   }

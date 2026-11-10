@@ -3,6 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On, PluginOptions, ProcessRunInit } from 'claude-code'
 
 import type { RateLimit } from '../hooks/args'
+import { FORECAST_V1 } from './fixtures/forecast'
 
 const PROPS = {
   hasSurvey: false,
@@ -13,24 +14,7 @@ const PROPS = {
   view: {},
 }
 
-const FORECAST = JSON.stringify({
-  classification: { task_type: 'bugfix' },
-  context: { mode: 'new chat', tokens: 60000, note: 'built-in assumption' },
-  estimates: [
-    {
-      total: { low: 100000, median: 400000, high: 1500000 },
-      level: 'prior',
-      group: 'all turns',
-      n: 0,
-      limit_pct: null,
-    },
-  ],
-  new_chat: null,
-  limit_window: '5h',
-  limit_readings: 0,
-  weekly_pct: null,
-  weekly_readings: 0,
-})
+const FORECAST = JSON.stringify(FORECAST_V1) // shared with Python's contract test
 
 const LIMITS: RateLimit[] = [
   { kind: 'five_hour', percentUsed: 23.5, resetsAt: '2026-10-15T14:00:00Z' },
@@ -90,7 +74,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(runs).toHaveLength(1) // no usage windows: nothing to record
     expect(runs[0]?.argv).toEqual(['tokcast', 'predict', '-', '--json', '--no-compare', '--model', 'opus'])
     expect(runs[0]?.init?.stdin).toBe('fix the crash in the parser')
-    expect(await ui.find({ type: 'Text', text: /~400k tokens/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /~360k tokens/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /built-in assumption/ })).toBeDefined()
   })
 }
@@ -179,7 +163,7 @@ test('dismiss clears the bubble', async ($, on) => {
   await ui.press({ key: 'estimate' })
   await ui.press({ key: 'dismiss' })
 
-  expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /360k/ })).toBeUndefined()
 })
 
 test('a live conversation passes its context size', async ($, on) => {
@@ -307,7 +291,7 @@ test('a reload during an estimate does not leave it thinking', async ($, on) => 
   expect(await ui.find({ type: 'Button', text: 'How much will this cost?' })).toBeDefined()
   await clock.advance(1000)
   await pressing
-  expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined() // its answer is stale
+  expect(await ui.find({ type: 'Text', text: /360k/ })).toBeUndefined() // its answer is stale
 })
 
 test('an answer that arrives after the prompt was sent is dropped', async ($, on) => {
@@ -322,7 +306,7 @@ test('an answer that arrives after the prompt was sent is dropped', async ($, on
   await clock.advance(1000)
   await pressing
 
-  expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /360k/ })).toBeUndefined()
   expect(await ui.find({ type: 'Button', text: 'How much will this cost?' })).toBeDefined()
 })
 
@@ -337,7 +321,7 @@ test('× cancels a running estimate', async ($, on) => {
   await clock.advance(1000)
   await pressing
 
-  expect(await ui.find({ type: 'Text', text: /400k/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /360k/ })).toBeUndefined()
 })
 
 test('the plan option reaches tokcast', { options: { plan: 'pro' } }, async ($, on) => {

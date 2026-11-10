@@ -252,7 +252,9 @@ def predict(
         weekly=weekly,
     )
     if as_json:
-        print(json.dumps(asdict(result), default=str, indent=2))
+        from tokcast.predict import contract
+
+        print(json.dumps(contract.to_json(result), indent=2))
     else:
         render.render_forecast(result, console)
 
