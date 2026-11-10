@@ -7,6 +7,9 @@ would be circular: only real data can say how good they are. Every prediction th
 relies on them labels the number "assumed".
 """
 
+from tokcast.models import EFFORTS as EFFORTS_KNOWN
+from tokcast.models import FAMILIES
+
 # Median API calls in a turn that isn't the first of a session. A turn re-reads its
 # context about once per call, so this is also the median "re-reads" of the context.
 CALLS = {
@@ -33,8 +36,8 @@ EFFORT_OUTPUT = {"low": 0.45, "medium": 1.0, "high": 1.7, "xhigh": 2.2, "max": 3
 MODEL_TOTAL = {"opus": 0.9, "sonnet": 1.0, "haiku": 1.1, "fable": 0.9}
 MODEL_OUTPUT = {"opus": 1.0, "sonnet": 1.0, "haiku": 0.9, "fable": 1.0}
 
-MODELS = tuple(MODEL_TOTAL)
-EFFORTS = tuple(EFFORT_TOTAL)
+MODELS = FAMILIES  # the one list lives in tokcast/models.py; a test checks the dicts above
+EFFORTS = EFFORTS_KNOWN
 
 
 def rereads(task_type: str, first_turn: bool) -> float:

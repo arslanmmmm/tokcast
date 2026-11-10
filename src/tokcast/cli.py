@@ -23,7 +23,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from tokcast import __version__, config
+from tokcast import __version__, config, models
 from tokcast.synth import generator as synth_gen  # standard library only: cheap to import
 
 # Heavy libraries (pandas, DuckDB, pyarrow, numpy) are imported inside the commands that
@@ -191,7 +191,7 @@ def predict(
     from tokcast import render
     from tokcast.calibrate import plans
     from tokcast.features.build import current_conversation, load_turns, new_chat_context
-    from tokcast.predict import forecast, priors
+    from tokcast.predict import forecast
 
     if plan is not None and plan not in plans.PLAN_MULTIPLE:
         names = ", ".join(plans.PLAN_MULTIPLE)
@@ -223,8 +223,9 @@ def predict(
 
     model = _model_family(model or (conversation.model if conversation else "opus"))
     effort = (effort or (conversation.effort if conversation else None) or "medium").lower()
-    if effort not in priors.EFFORTS:
-        console.print(f"[red]Unknown effort:[/] {effort} (use {', '.join(priors.EFFORTS)})")
+    if effort not in models.EFFORTS:
+        known = ", ".join(models.EFFORTS)
+        console.print(f"[red]Unknown effort:[/] {escape(effort)} (use {known})")
         raise typer.Exit(1)
 
     if continue_:
@@ -296,14 +297,12 @@ def _open_db():
 
 
 def _model_family(name: str) -> str:
-    """'opus', 'Opus' or 'claude-opus-5-5' -> 'opus'."""
-    from tokcast.predict import priors
-
-    match = re.search(r"opus|sonnet|haiku|fable", name.lower())
-    if not match:
-        console.print(f"[red]Unknown model:[/] {name} (use {', '.join(priors.MODELS)})")
-        raise typer.Exit(1)
-    return match.group(0)
+    """'opus', 'Opus' or 'claude-opus-5-5' -> 'opus'; an unknown model is an error."""
+    if found := models.family(name):
+        return found
+    known = ", ".join(models.FAMILIES)
+    console.print(f"[red]Unknown model:[/] {escape(name)} (use {known})")
+    raise typer.Exit(1)
 
 
 def _parse_duration(text: str) -> timedelta:

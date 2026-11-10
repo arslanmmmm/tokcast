@@ -10,7 +10,7 @@ from pathlib import Path
 
 import duckdb
 
-from tokcast import config, private
+from tokcast import config, models, private
 from tokcast.storage import migrations
 from tokcast.storage.migrations import DatabaseTooNew
 
@@ -67,5 +67,5 @@ def connect(path: Path | str, *, busy_wait: float = BUSY_WAIT_SECONDS) -> duckdb
         private.protect(Path(path), Path(f"{path}.wal"))
     con.execute(load_sql("schema.sql"))
     migrations.migrate(con)
-    con.execute(load_sql("views.sql"))
+    con.execute(load_sql("views.sql").replace("{model_families}", models.FAMILY_PATTERN))
     return con

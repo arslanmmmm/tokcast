@@ -15,7 +15,7 @@ SELECT
     r.input_tokens + r.cache_read_tokens + r.cache_creation_tokens AS context_tokens,
     r.input_tokens + r.cache_read_tokens + r.cache_creation_tokens + r.output_tokens
         AS total_tokens,
-    regexp_extract(r.model, '(opus|sonnet|haiku|fable)', 1) AS model_family,
+    regexp_extract(r.model, '({model_families})', 1) AS model_family,  -- tokcast/models.py
     -- "Cost units": tokens weighted by their API price ratios (input 1, cache write 1.25
     -- for 5 minutes or 2 for 1 hour, cache read 0.1, output 5). Usage limits are assumed
     -- to weigh tokens the same way; `tokcast calibrate` learns the scale from real readings.
