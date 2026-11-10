@@ -24,3 +24,8 @@ wheels/
 
 # Output of `tokcast synth` (synthetic demo logs + their database)
 tokcast-demo/
+
+# Coverage data (uv run pytest --cov)
+.coverage
+.coverage.*
+htmlcov/
