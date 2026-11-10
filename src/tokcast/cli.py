@@ -95,9 +95,8 @@ def ingest(
     from tokcast.calibrate import load_file
     from tokcast.ingest import pipeline
     from tokcast.ingest.sources import ClaudeCodeSource
-    from tokcast.storage import db
 
-    with db.connect(config.db_path()) as con:
+    with _open_db() as con:
         report = pipeline.ingest(con, ClaudeCodeSource(), root, store_text=not no_text, full=full)
         readings = load_file(con, config.data_dir())  # captured by `tokcast statusline`
 
@@ -130,12 +129,11 @@ def stats(
     """Summarize your history: tokens by model, day and project, and what drives cost."""
     from tokcast import render
     from tokcast.stats import build_report
-    from tokcast.storage import db
 
     if not config.db_path().exists():
         console.print("No data yet. Run [bold]tokcast ingest[/] first.")
         raise typer.Exit(1)
-    with db.connect(config.db_path()) as con:
+    with _open_db() as con:
         if tz:
             try:
                 ZoneInfo(tz)  # validate before putting it into SQL
@@ -181,7 +179,6 @@ def predict(
     from tokcast import render
     from tokcast.features.build import current_conversation, load_turns, new_chat_context
     from tokcast.predict import forecast, priors
-    from tokcast.storage import db
 
     predictor = _predictor(method)
     if prompt == "-":
@@ -193,7 +190,7 @@ def predict(
     turns, conversation, fresh, fresh_n = None, None, None, 0
     calibration, weekly, reading = None, None, None
     if config.db_path().exists():
-        with db.connect(config.db_path()) as con:
+        with _open_db() as con:
             turns = load_turns(con)
             conversation = current_conversation(con)
             fresh, fresh_n = new_chat_context(con)
@@ -265,6 +262,17 @@ def _predictor(method: str):
     raise typer.Exit(1)
 
 
+def _open_db():
+    """The user's database, or a one-line message (not a traceback) when it stays busy."""
+    from tokcast.storage import db
+
+    try:
+        return db.connect(config.db_path())
+    except db.DatabaseBusy as busy:
+        console.print(f"[red]{escape(str(busy))}[/]")
+        raise typer.Exit(3) from busy
+
+
 def _model_family(name: str) -> str:
     """'opus', 'Opus' or 'claude-opus-5-5' -> 'opus'."""
     from tokcast.predict import priors
@@ -326,7 +334,7 @@ def eval_(
         if not config.db_path().exists():
             console.print("No data yet. Run [bold]tokcast ingest[/] first, or try --synthetic 300.")
             raise typer.Exit(1)
-        with db.connect(config.db_path()) as con:
+        with _open_db() as con:
             turns = load_turns(con)
             data = "synthetic" if synth_gen.is_synthetic_db(con) else "real"
 
@@ -363,12 +371,11 @@ def calibrate(
     from tokcast.calibrate.mapping import WINDOW_LENGTH
     from tokcast.ingest import pipeline
     from tokcast.ingest.sources import ClaudeCodeSource
-    from tokcast.storage import db
 
     if window not in WINDOW_LENGTH:
         console.print("[red]--window must be 5h or 7d[/]")
         raise typer.Exit(1)
-    with db.connect(config.db_path()) as con:
+    with _open_db() as con:
         # Token counts must be current for the reading to be matched against them.
         logs = config.claude_logs_dir()
         if logs.is_dir() and not synth_gen.is_synthetic(logs):
