@@ -1,7 +1,7 @@
 # Plan, progress and decisions
 
 **Status (2026-11-10): v0.1, milestone 9 (Claude Code mod), 10a, 10b, and phases A and B
-of the review roadmap done.** 197 Python tests (97.8% coverage) and 47 mod tests pass; CI
+of the review roadmap done.** 197 Python tests (97.8% coverage) and 49 mod tests pass; CI
 runs lint, mypy and the coverage gate. A six-agent review (below) set the roadmap: phases A–E.
 This file records what was built, the decisions behind it, and what's next.
 
@@ -232,7 +232,9 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
     until a version bump. **11b:** only `/compact` gets a button (`$.session.compact()`,
     the same call, draft kept). Not `/clear` (wipes the conversation, and the mod API has
     no call for it) and not model/effort (settings that outlast the prompt): a tip may
-    not take those steps for the user.
+    not take those steps for the user. Tried live: the desktop app answered "not available
+    in a headless (-p / SDK) session yet", so the button shows in terminal sessions only
+    and a refused compact says "type /compact yourself".
 
 ## Findings from the author's real logs
 

@@ -389,3 +389,28 @@ test('no compact button without that advice', async ($, on) => {
 
   expect(await ui.find({ key: 'apply' })).toBeUndefined()
 })
+
+test('the desktop app gets no Compact button: it can\'t compact from a mod yet', async ($, on) => {
+  // Found in a real desktop session: "$.session.compact: not available in a headless
+  // (-p / SDK) session yet". The tip text still says /compact.
+  engine(on, 'refactor the parser', { exitCode: 0, stdout: WITH_COMPACT, stderr: '' })
+  const ui = await band($, 'desktop')
+
+  await ui.press({ key: 'estimate' })
+
+  expect(await ui.find({ key: 'apply' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /\/compact/ })).toBeDefined()
+})
+
+test('a compact the host refuses gets a short, useful message', async ($, on) => {
+  engine(on, 'refactor the parser', { exitCode: 0, stdout: WITH_COMPACT, stderr: '' })
+  on('session.compact', () => {
+    throw new Error('$.session.compact: not available in a headless (-p / SDK) session yet: ...')
+  })
+  const ui = await band($)
+
+  await ui.press({ key: 'estimate' })
+  await ui.press({ key: 'apply' })
+
+  expect(await ui.find({ type: 'Text', text: /Type \/compact yourself/ })).toBeDefined()
+})

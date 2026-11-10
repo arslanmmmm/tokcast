@@ -120,6 +120,9 @@ async function estimate($: EngineInterface, cfg: Config): Promise<void> {
 
 // One click on the cheaper next move: the same call /compact makes. The draft stays in the
 // box; the old estimate is stale afterwards, so the bubble asks to be clicked again.
+// Terminal sessions only: the desktop app runs Claude Code as an SDK host, where
+// $.session.compact isn't available yet (found in a real session), so there the tip text
+// says /compact and the user types it.
 async function compactNow($: EngineInterface): Promise<void> {
   request += 1 // an estimate still running would describe the old conversation
   let next: Bubble
@@ -137,7 +140,11 @@ async function compactNow($: EngineInterface): Promise<void> {
       next = { kind: 'error', lines: ["Didn't compact."] }
     }
   } catch (error) {
-    next = { kind: 'error', lines: [`Can't compact right now: ${firstLine(message(error))}`] }
+    // e.g. the desktop app (an SDK host) can't compact from a mod yet; the command still works
+    next = {
+      kind: 'error',
+      lines: [`Can't compact from here: ${firstLine(message(error))}`, 'Type /compact yourself.'],
+    }
   }
   await update($, bubble, () => next)
 }
@@ -226,7 +233,7 @@ export const register: Register = (on, options) => {
             {hasAnswer || isBusy ? (
               <Button key="dismiss" label="×" onPress={() => reset($)} />
             ) : null}
-            {state.kind === 'answer' && state.compact ? (
+            {state.kind === 'answer' && state.compact && e.surface === 'terminal' ? (
               <Button key="apply" label={state.compact} onPress={() => compactNow($)} />
             ) : null}
             <Button key="hide" label="hide" onPress={() => setView($, 'mini')} />
