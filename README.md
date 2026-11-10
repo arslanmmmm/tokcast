@@ -281,14 +281,15 @@ A detailed comparison, including what users of these tools ask for, is in
 
 ```bash
 uv sync                                  # Python 3.12, dev tools and the ml extra
-uv run pytest                            # 171 tests, about 35 s
+uv run pytest --cov                      # 174 tests, coverage gate (97%), about 45 s
 uv run ruff check . && uv run ruff format --check .
+uv run mypy                              # type check
 ```
 
 The Claude Code mod has its own tests (`claude plugin test integrations/claude-code`, 41
 tests). They need the Claude Code binary, so CI doesn't run them yet.
 
-CI runs the Python checks on every push. Fixture logs in `tests/fixtures/` are handwritten, and
+CI runs lint, the type check and the tests with the coverage gate on every push. Fixture logs in `tests/fixtures/` are handwritten, and
 `.gitignore` blocks real logs and databases.
 
 ```

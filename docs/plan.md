@@ -1,8 +1,8 @@
 # Plan, progress and decisions
 
-**Status (2026-11-10): v0.1 and milestone 9 (Claude Code mod) complete; phase A of the
-review roadmap done.** 144 Python tests pass and CI is green; the mod has 36 tests of its
-own. A six-agent review (below) set the roadmap: phases A–E.
+**Status (2026-11-10): v0.1, milestone 9 (Claude Code mod), 10a, 10b, and phases A and B
+of the review roadmap done.** 174 Python tests (97.7% coverage) and 41 mod tests pass; CI
+runs lint, mypy and the coverage gate. A six-agent review (below) set the roadmap: phases A–E.
 This file records what was built, the decisions behind it, and what's next.
 
 ## Milestones
@@ -31,7 +31,8 @@ This file records what was built, the decisions behind it, and what's next.
 | 10a | Increments vs totals estimator: pre-registered backtest → keep totals | ✅ | `2d5e97f`, `abaae23` |
 | 10a-2 | Same with a rounding-aware interval, on readings after 2026-11-10 | ⏳ | |
 | 10b | Starting guess for % of limit per plan, used only before 3 own readings | ✅ | `c911c9d` |
-| B1 | Versioned `predict --json` contract; numbered schema migrations | ✅ | `b63206f`, after |
+| B1 | Versioned `predict --json` contract; numbered schema migrations | ✅ | `b63206f`, `e0e544c` |
+| B2 | mypy (63 → 0 errors, none silenced), coverage ratchet 97%, render tests, in CI | ✅ | `c07cd53`, after |
 
 ## Key decisions
 
@@ -194,6 +195,15 @@ Each decision lists the choice, the reason, and the alternative that was rejecte
     old trailing `ALTER ... IF NOT EXISTS` became migration 001. *Not done: read-only
     opens for `stats`/`eval`. A DuckDB writer process locks out all other processes, read-only
     ones included, so they wouldn't help with the busy database; the lock wait (phase A) does.*
+
+35. **Type checking and a coverage ratchet in CI** (B2). mypy with `check_untyped_defs`
+    found 63 errors; all were fixed, none ignored (only pyarrow and scikit-learn, which ship
+    no types, are skipped). The useful finds: `forecast()` mutated estimates in place;
+    Optional values used unchecked; a `__new__` that returned another class. Coverage is
+    measured on every CI run with `fail_under = 97` (just under the current 97.7%): it may
+    rise, never quietly drop. The review's "only 4 CLI tests" was a miscount (54 CLI runs
+    across test files); the real gap was untested *output*, now covered by
+    `tests/test_render.py`, including the "wouldn't fit in what's left" warning.
 
 ## Findings from the author's real logs
 

@@ -11,8 +11,10 @@ Progress, every key decision and its reason, and next steps are in
 
 ```bash
 uv sync                                   # Python 3.12 + dev tools + the ml extra
-uv run pytest                             # ~171 tests, ~35 s
+uv run pytest                             # ~174 tests, ~35 s
 uv run ruff check . && uv run ruff format --check .
+uv run mypy                               # type check src/ (CI runs it too)
+uv run pytest --cov                       # tests + the coverage ratchet (97%)
 uv run tokcast synth --out tokcast-demo   # synthetic data for trying things
 TOKCAST_HOME=tokcast-demo/db uv run tokcast ingest --path tokcast-demo/logs
 ```

@@ -12,6 +12,8 @@ from rich.text import Text
 from tokcast.calibrate import MIN_POINTS, Calibration
 from tokcast.calibrate.mapping import MIN_PCT
 from tokcast.evaluate import BacktestResult
+from tokcast.evaluate.backtest import MethodResult
+from tokcast.evaluate.limits import LimitBacktest
 from tokcast.predict import Estimate, Forecast, Range
 from tokcast.stats import StatsReport
 
@@ -384,7 +386,7 @@ def _scores_table(title: str, result: BacktestResult, target: str) -> Table:
     return t
 
 
-def _vs_baseline(m) -> Text:
+def _vs_baseline(m: MethodResult) -> Text:
     """Paired difference in pinball loss: green if clearly better, red if clearly worse."""
     if m.vs_baseline is None:
         return Text("")
@@ -535,7 +537,7 @@ def _verdict(adopt: bool | None) -> str:
     return "[green]adopt increments[/]" if adopt else "keep totals"
 
 
-def render_limit_backtest(results: list, console: Console) -> None:
+def render_limit_backtest(results: list[LimitBacktest], console: Console) -> None:
     """Totals vs increments for each limit window, judged by the rule in docs/plan.md (10a)."""
     t = _table(
         "% of limit calibration: forward backtest by window (rule: docs/plan.md, 10a)",
